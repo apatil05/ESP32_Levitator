@@ -18,10 +18,20 @@ bool levitation_init(float frequency, float initial_phase) {
     
     // Use timer interrupt for BOTH channels - this ensures IDENTICAL waves
     // Both channels use the same timer, same phase accumulator, same lookup table
-    // Calculate sample rate that's at least 2x the frequency (Nyquist)
-    uint32_t sample_rate = (uint32_t)(frequency * 2.5f);  // 2.5x for good quality
-    if (sample_rate < 80000) sample_rate = 80000;  // Minimum sample rate
-    if (sample_rate > 200000) sample_rate = 200000;  // Maximum reasonable rate
+    // For precise 40 kHz: use sample rate that gives exact phase increment
+    // Calculate optimal sample rate for maximum precision
+    uint32_t sample_rate;
+    if (frequency == 40000.0f) {
+        // For exactly 40 kHz, use 200 kHz sample rate for high precision
+        // This gives phase_increment = 40000 * 65536 / 200000 = 13107.2
+        // With rounding, this is very precise
+        sample_rate = 200000;  // 200 kHz - 5x oversampling for 40 kHz
+    } else {
+        // For other frequencies, use 2.5x oversampling
+        sample_rate = (uint32_t)(frequency * 2.5f);
+        if (sample_rate < 80000) sample_rate = 80000;
+        if (sample_rate > 200000) sample_rate = 200000;
+    }
     
     // Initialize both channels with timer interrupt - they will be IDENTICAL
     if (!phase_shifted_dac_init(frequency, sample_rate, 0.0f)) {

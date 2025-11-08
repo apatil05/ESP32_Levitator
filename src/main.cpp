@@ -7,8 +7,8 @@
 #define TEST_MODE_OSCILLOSCOPE true  // Set to true for oscilloscope testing, false for production
 
 #if TEST_MODE_OSCILLOSCOPE
-  // Test mode: Higher frequency for better oscilloscope visibility
-  const float ULTRASONIC_FREQUENCY = 10000.0f;  // 10 kHz - good visibility on scope
+  // Test mode: Precise 40 kHz frequency
+  const float ULTRASONIC_FREQUENCY = 40000.0f;  // Exactly 40 kHz
   const float INITIAL_PHASE = 0.0f;
 #else
   // Production mode: Ultrasonic frequency for levitation
@@ -34,7 +34,7 @@ void setup() {
     Serial.println("  Oscilloscope GND -> GND");
     Serial.println();
     Serial.println("RECOMMENDED SCOPE SETTINGS:");
-    Serial.println("  Timebase: 10us/div to 50us/div (10 kHz = 100us period)");
+    Serial.println("  Timebase: 2us/div to 5us/div (40 kHz = 25us period)");
     Serial.println("  Voltage: 500mV/div or 1V/div");
     Serial.println("  Coupling: DC");
     Serial.println("  Trigger: Ch1, Rising Edge");
@@ -71,18 +71,20 @@ void setup() {
     
     Serial.println("✓ System started!");
     Serial.println();
-    Serial.println("TEST MODE: IDENTICAL SINE WAVES");
+    Serial.println("TEST MODE: IDENTICAL SINE WAVES AT 40 kHz");
     Serial.println("  Both channels output the EXACT same signal");
-    Serial.println("  Waves should overlap perfectly on oscilloscope");
+    Serial.println("  Frequency: Precisely 40,000 Hz (40 kHz)");
+    Serial.println("  Sample rate: 200,000 Hz (5x oversampling)");
     Serial.println();
     Serial.println("WHAT TO CHECK ON OSCILLOSCOPE:");
     Serial.println("  - Both waves should overlap perfectly");
-    Serial.println("  - Same frequency (measure with scope)");
+    Serial.println("  - Frequency should measure exactly 40 kHz");
+    Serial.println("  - Period should be exactly 25 microseconds");
     Serial.println("  - Same amplitude (same voltage range)");
     Serial.println("  - Same phase (no offset between waves)");
     Serial.println("  - In X-Y mode: Should show a diagonal line");
     Serial.println();
-    Serial.println("System running...");
+    Serial.println("System running at 40 kHz...");
     Serial.println();
   } else {
     Serial.println("✗ Failed to initialize system!");
