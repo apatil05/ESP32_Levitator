@@ -24,23 +24,30 @@ bool levitation_init(float frequency, float initial_phase) {
     if (freq_step < 1) freq_step = 1;
     if (freq_step > 65535) freq_step = 65535;
     
-    // Setup Channel 1: Hardware cosine generator (reference)
+    // Setup Channel 1: Hardware cosine generator configured as SINE wave (reference)
+    // Both channels will output identical sine waves at the same frequency
     // 1. Enable cosine waveform generator
     SET_PERI_REG_MASK(SENS_SAR_DAC_CTRL1_REG, SENS_SW_TONE_EN);
     
     // 2. Connect generator to DAC channel 1 (GPIO25)
     SET_PERI_REG_MASK(SENS_SAR_DAC_CTRL2_REG, SENS_DAC_CW_EN1_M);
     
-    // 3. Set frequency step
+    // 3. Set frequency step (ensures exact frequency match with Channel 2)
     SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL1_REG, SENS_SW_FSTEP, freq_step, SENS_SW_FSTEP_S);
     
-    // 4. Fix waveform inversion (makes a proper sine)
+    // 4. Invert MSB to convert cosine to sine wave (invert=2)
+    // This ensures Channel 1 outputs a sine wave, matching Channel 2's sine lookup table
     SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL2_REG, SENS_DAC_INV1, 2, SENS_DAC_INV1_S);
     
-    // 5. Enable DAC1 output
+    // 5. Ensure full amplitude scale (0 = no scaling, full 0-255 range)
+    SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL2_REG, SENS_DAC_SCALE1, 0, SENS_DAC_SCALE1_S);
+    
+    // 6. Enable DAC1 output
     dac_output_enable(DAC_CHANNEL_1);
     
-    // Setup Channel 2: Phase-shifted sine wave using timer interrupt
+    // Setup Channel 2: Phase-shifted SINE wave using timer interrupt
+    // Uses sine lookup table (sinf()) - same waveform type as Channel 1
+    // Same frequency as Channel 1, full amplitude (0-255 range)
     // Use a sample rate that's at least 2x the frequency (Nyquist)
     uint32_t sample_rate = (uint32_t)(frequency * 2.5f);  // 2.5x for good quality
     if (sample_rate < 80000) sample_rate = 80000;  // Minimum sample rate

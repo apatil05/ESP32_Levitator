@@ -25,12 +25,14 @@ static const uint16_t LUT_SIZE = 256;              // Lookup table size
 
 /**
  * Generate sine lookup table (0-255 for 0-2π)
+ * Creates a sine wave matching Channel 1's amplitude range (0-255, full scale)
+ * Both channels output identical sine waves at the same frequency
  */
 void generate_sine_lut(uint8_t* lut, uint16_t size) {
     for (uint16_t i = 0; i < size; i++) {
         float angle = 2.0f * M_PI * i / size;
         float value = sinf(angle);
-        // Convert from [-1, 1] to [0, 255] for 8-bit DAC
+        // Convert from [-1, 1] to [0, 255] for 8-bit DAC (full scale, matches Channel 1)
         lut[i] = (uint8_t)((value + 1.0f) * 127.5f);
     }
 }
