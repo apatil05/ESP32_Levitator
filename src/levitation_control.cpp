@@ -19,12 +19,11 @@ bool levitation_init(float frequency, float initial_phase) {
     
     // Calculate frequency step for hardware cosine generator with clock divider
     // Formula: freq = (dig_clk_rtc_freq / (1 + clk_8m_div)) × SENS_SAR_SW_FSTEP / 65536
-    // For 40 Hz: Use clk_8m_div = 7 to get 1 MHz base clock (best accuracy for low frequencies)
-    // freq_step = (40 * 65536) / 1000000 = 2.62144, round to 3
-    // Actual frequency: (1000000 * 3) / 65536 = 45.78 Hz (closest achievable with hardware)
-    // Note: Hardware generator has limitations for very low frequencies
+    // For 40 Hz: Use clk_8m_div = 2 to get 2.67 MHz base clock (best accuracy for 40 Hz)
+    // freq_step = (40 * 65536) / 2666667 = 0.983, round to 1
+    // Actual frequency: (2666667 * 1) / 65536 = 40.69 Hz (only 0.69 Hz error - much better!)
     // Channel 2 (timer-based) will be exactly 40.00 Hz
-    int clk_8m_div = 7;  // Divide 8 MHz by 8 to get 1 MHz base clock (best for low freq)
+    int clk_8m_div = 2;  // Divide 8 MHz by 3 to get 2.67 MHz base clock (best for 40 Hz)
     const float base_rtc_freq = RTC_FAST_CLK_FREQ_APPROX / (1.0f + clk_8m_div);
     uint16_t freq_step = (uint16_t)((frequency * 65536.0f) / base_rtc_freq + 0.5f);  // Round to nearest integer
     if (freq_step < 1) freq_step = 1;
@@ -94,7 +93,7 @@ void levitation_set_frequency(float frequency) {
     
     if (g_initialized) {
         // Update hardware cosine generator frequency with clock divider
-        int clk_8m_div = 7;  // Divide 8 MHz by 8 to get 1 MHz base clock (best for low freq)
+        int clk_8m_div = 2;  // Divide 8 MHz by 3 to get 2.67 MHz base clock (best for 40 Hz)
         const float base_rtc_freq = RTC_FAST_CLK_FREQ_APPROX / (1.0f + clk_8m_div);
         uint16_t freq_step = (uint16_t)((frequency * 65536.0f) / base_rtc_freq + 0.5f);  // Round to nearest
         if (freq_step < 1) freq_step = 1;
