@@ -139,6 +139,14 @@ void dac_invert_set(dac_channel_t channel, int invert)
 }
 
 /*
+ * Calculate frequency from clock divider and frequency step
+ */
+float dac_calculate_frequency(int clk_8m_div, int frequency_step)
+{
+    return RTC_FAST_CLK_FREQ_APPROX / (1 + clk_8m_div) * (float) frequency_step / 65536;
+}
+
+/*
  * Main task that let you test CW parameters in action
  *
 */
