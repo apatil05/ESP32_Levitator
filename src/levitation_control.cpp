@@ -1,6 +1,7 @@
 #include "levitation_control.h"
 #include "phase_shifted_dac.h"
 #include "soc/sens_reg.h"
+#include "soc/rtc_cntl_reg.h"
 #include "driver/dac.h"
 #include "soc/rtc.h"
 
@@ -16,13 +17,19 @@ bool levitation_init(float frequency, float initial_phase) {
     g_frequency = frequency;
     g_phase_shift = initial_phase;
     
-    // Calculate frequency step for hardware cosine generator
-    // Formula: freq = dig_clk_rtc_freq × SENS_SAR_SW_FSTEP / 65536
-    // dig_clk_rtc_freq is typically 8 MHz
-    const float rtc_freq = RTC_FAST_CLK_FREQ_APPROX;
-    uint16_t freq_step = (uint16_t)((frequency * 65536.0f) / rtc_freq);
+    // Calculate frequency step for hardware cosine generator with clock divider
+    // Formula: freq = (dig_clk_rtc_freq / (1 + clk_8m_div)) × SENS_SAR_SW_FSTEP / 65536
+    // For 40 Hz: Use clk_8m_div = 3 to get 2 MHz base clock for better accuracy
+    // freq_step = (40 * 65536) / 2000000 = 1310.72, round to 1311
+    // Actual frequency: (2000000 * 1311) / 65536 = 39.99 Hz (very close to 40.00 Hz)
+    int clk_8m_div = 3;  // Divide 8 MHz by 4 to get 2 MHz base clock
+    const float base_rtc_freq = RTC_FAST_CLK_FREQ_APPROX / (1.0f + clk_8m_div);
+    uint16_t freq_step = (uint16_t)((frequency * 65536.0f) / base_rtc_freq + 0.5f);  // Round to nearest integer
     if (freq_step < 1) freq_step = 1;
     if (freq_step > 65535) freq_step = 65535;
+    
+    // Set RTC clock divider for accurate low-frequency generation
+    REG_SET_FIELD(RTC_CNTL_CLK_CONF_REG, RTC_CNTL_CK8M_DIV_SEL, clk_8m_div);
     
     // Setup Channel 1: Hardware cosine generator configured as SINE wave (reference)
     // Both channels will output identical sine waves at the same frequency
@@ -78,11 +85,13 @@ void levitation_set_frequency(float frequency) {
     g_frequency = frequency;
     
     if (g_initialized) {
-        // Update hardware cosine generator frequency
-        const float rtc_freq = RTC_FAST_CLK_FREQ_APPROX;
-        uint16_t freq_step = (uint16_t)((frequency * 65536.0f) / rtc_freq);
+        // Update hardware cosine generator frequency with clock divider
+        int clk_8m_div = 3;  // Divide 8 MHz by 4 to get 2 MHz base clock
+        const float base_rtc_freq = RTC_FAST_CLK_FREQ_APPROX / (1.0f + clk_8m_div);
+        uint16_t freq_step = (uint16_t)((frequency * 65536.0f) / base_rtc_freq + 0.5f);  // Round to nearest
         if (freq_step < 1) freq_step = 1;
         if (freq_step > 65535) freq_step = 65535;
+        REG_SET_FIELD(RTC_CNTL_CLK_CONF_REG, RTC_CNTL_CK8M_DIV_SEL, clk_8m_div);
         SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL1_REG, SENS_SW_FSTEP, freq_step, SENS_SW_FSTEP_S);
         
         // Update phase-shifted DAC frequency

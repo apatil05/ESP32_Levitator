@@ -7,12 +7,12 @@
 #define TEST_MODE_OSCILLOSCOPE true  // Set to true for oscilloscope testing, false for production
 
 #if TEST_MODE_OSCILLOSCOPE
-  // Test mode: Lower frequency for oscilloscope viewing
-  const float ULTRASONIC_FREQUENCY = 1000.0f;  // 1 kHz - easy to see on scope
+  // Test mode: 40 Hz frequency for oscilloscope viewing and testing
+  const float ULTRASONIC_FREQUENCY = 40.0f;  // 40 Hz - exact frequency for both channels
   const float INITIAL_PHASE = 0.0f;
 #else
-  // Production mode: Ultrasonic frequency for levitation
-  const float ULTRASONIC_FREQUENCY = 40000.0f;  // 40 kHz ultrasonic frequency
+  // Production mode: 40 Hz frequency
+  const float ULTRASONIC_FREQUENCY = 40.0f;  // 40 Hz - exact frequency for both channels
   const float INITIAL_PHASE = 0.0f;
 #endif
 
