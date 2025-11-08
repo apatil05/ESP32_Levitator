@@ -16,9 +16,15 @@
   const float INITIAL_PHASE = 0.0f;
 #endif
 
+// Phase shift test configuration
+const float PHASE_SHIFT_INTERVAL = 5000;  // Change phase every 5 seconds (5000ms)
+// Phase values to cycle through (in degrees)
+const float PHASE_VALUES[] = {0.0f, 90.0f, 180.0f, 270.0f, 360.0f};
+const int NUM_PHASE_VALUES = sizeof(PHASE_VALUES) / sizeof(PHASE_VALUES[0]);
+
 // Phase control variables
-float current_phase = INITIAL_PHASE;
-bool system_running = false;
+int phase_index = 0;
+unsigned long last_phase_change = 0;
 
 void setup() {
   Serial.begin(921600);
@@ -27,12 +33,12 @@ void setup() {
   #if TEST_MODE_OSCILLOSCOPE
     Serial.println("========================================");
     Serial.println("ESP32 Acoustic Levitation System");
-    Serial.println("OSCILLOSCOPE TEST MODE");
+    Serial.println("AUTOMATIC PHASE SHIFT TEST MODE");
     Serial.println("========================================");
     Serial.println();
     Serial.println("HARDWARE CONNECTIONS:");
-    Serial.println("  Oscilloscope Ch1 -> GPIO25 (DAC1)");
-    Serial.println("  Oscilloscope Ch2 -> GPIO26 (DAC2)");
+    Serial.println("  Oscilloscope Ch1 -> GPIO25 (DAC1) - Reference wave");
+    Serial.println("  Oscilloscope Ch2 -> GPIO26 (DAC2) - Phase-shifted wave");
     Serial.println("  Oscilloscope GND -> GND");
     Serial.println();
     Serial.println("RECOMMENDED SCOPE SETTINGS:");
@@ -45,7 +51,7 @@ void setup() {
   #else
     Serial.println("========================================");
     Serial.println("ESP32 Acoustic Levitation System");
-    Serial.println("PRODUCTION MODE");
+    Serial.println("AUTOMATIC PHASE SHIFT MODE");
     Serial.println("========================================");
     Serial.println();
   #endif
@@ -58,38 +64,37 @@ void setup() {
   if (levitation_init(ULTRASONIC_FREQUENCY, INITIAL_PHASE)) {
     Serial.println("✓ System initialized successfully!");
     Serial.println();
-    Serial.println("Channel 1 (GPIO25): Hardware cosine generator (reference)");
-    Serial.println("Channel 2 (GPIO26): Phase-shifted sine wave (controlled)");
+    Serial.println("Channel 1 (GPIO25): Hardware cosine generator (reference - no phase shift)");
+    Serial.println("Channel 2 (GPIO26): Phase-shifted sine wave (automatically shifting every 5 seconds)");
     Serial.println();
     
     // Start the system
     levitation_start();
-    system_running = true;
-    current_phase = INITIAL_PHASE;
+    last_phase_change = millis();
     
     Serial.println("✓ Levitation system started!");
     Serial.println();
-    Serial.println("Commands:");
-    Serial.println("  'u' - Move object up (increase phase)");
-    Serial.println("  'd' - Move object down (decrease phase)");
-    Serial.println("  'r' - Reset phase to 0°");
-    Serial.println("  's' - Show current phase");
-    Serial.println("  't' - Toggle system on/off");
-    #if TEST_MODE_OSCILLOSCOPE
-    Serial.println();
-    Serial.println("TEST MODE COMMANDS:");
-    Serial.println("  '0' - Set phase to 0° (waves should overlap)");
-    Serial.println("  '9' - Set phase to 90° (1/4 cycle shift)");
-    Serial.println("  '1' - Set phase to 180° (waves inverted)");
-    Serial.println("  '2' - Set phase to 270° (3/4 cycle shift)");
+    Serial.println("AUTOMATIC PHASE SHIFT TEST:");
+    Serial.println("  Phase will cycle through: 0°, 90°, 180°, 270°, 360°");
+    Serial.println("  Each phase lasts 5 seconds");
     Serial.println();
     Serial.println("WHAT TO CHECK ON OSCILLOSCOPE:");
     Serial.println("  - At 0°: Both waves should overlap perfectly");
     Serial.println("  - At 90°: Waves should be 1/4 cycle apart");
     Serial.println("  - At 180°: Waves should be inverted");
-    Serial.println("  - Use X-Y mode to see Lissajous patterns");
-    #endif
+    Serial.println("  - At 270°: Waves should be 3/4 cycle apart");
+    Serial.println("  - At 360°: Same as 0° (waves overlap)");
+    Serial.println("  - Use X-Y mode to see Lissajous patterns!");
     Serial.println();
+    Serial.println("Starting phase test in 2 seconds...");
+    Serial.println();
+    delay(2000);
+    
+    // Set initial phase and print
+    levitation_set_phase(PHASE_VALUES[0]);
+    Serial.print(">>> Phase set to: ");
+    Serial.print(PHASE_VALUES[0]);
+    Serial.println("°");
   } else {
     Serial.println("✗ Failed to initialize system!");
     Serial.println("Check your hardware connections.");
@@ -97,124 +102,35 @@ void setup() {
 }
 
 void loop() {
-  // Handle serial commands
-  if (Serial.available()) {
-    char cmd = Serial.read();
-    
-    switch (cmd) {
-      case 'u':
-      case 'U':
-        // Move up: increase phase
-        current_phase += 5.0f;  // 5° steps
-        levitation_set_phase(current_phase);
-        Serial.print("Phase: ");
-        Serial.print(current_phase);
-        Serial.println("° (moved up)");
-        break;
-        
-      case 'd':
-      case 'D':
-        // Move down: decrease phase
-        current_phase -= 5.0f;  // 5° steps
-        levitation_set_phase(current_phase);
-        Serial.print("Phase: ");
-        Serial.print(current_phase);
-        Serial.println("° (moved down)");
-        break;
-        
-      case 'r':
-      case 'R':
-        // Reset phase
-        current_phase = 0.0f;
-        levitation_set_phase(current_phase);
-        Serial.println("Phase reset to 0°");
-        break;
-        
-      case 's':
-      case 'S':
-        // Show status
-        Serial.println("--- Status ---");
-        Serial.print("Frequency: ");
-        Serial.print(levitation_get_frequency());
-        Serial.println(" Hz");
-        Serial.print("Phase shift: ");
-        Serial.print(levitation_get_phase());
-        Serial.println("°");
-        Serial.print("System: ");
-        Serial.println(system_running ? "Running" : "Stopped");
-        break;
-        
-      case 't':
-      case 'T':
-        // Toggle system
-        if (system_running) {
-          levitation_stop();
-          system_running = false;
-          Serial.println("System stopped");
-        } else {
-          levitation_start();
-          system_running = true;
-          Serial.println("System started");
-        }
-        break;
-        
-      #if TEST_MODE_OSCILLOSCOPE
-      case '0':
-        // Set phase to 0° for testing
-        current_phase = 0.0f;
-        levitation_set_phase(current_phase);
-        Serial.println("Phase set to 0° - waves should overlap on scope");
-        break;
-        
-      case '9':
-        // Set phase to 90° for testing
-        current_phase = 90.0f;
-        levitation_set_phase(current_phase);
-        Serial.println("Phase set to 90° - waves should be 1/4 cycle apart");
-        break;
-        
-      case '1':
-        // Set phase to 180° for testing
-        current_phase = 180.0f;
-        levitation_set_phase(current_phase);
-        Serial.println("Phase set to 180° - waves should be inverted");
-        break;
-        
-      case '2':
-        // Set phase to 270° for testing
-        current_phase = 270.0f;
-        levitation_set_phase(current_phase);
-        Serial.println("Phase set to 270° - waves should be 3/4 cycle apart");
-        break;
-      #endif
-        
-      default:
-        if (cmd != '\n' && cmd != '\r') {
-          Serial.print("Unknown command: '");
-          Serial.print(cmd);
-          Serial.println("'");
-        }
-        break;
-    }
-  }
+  // Check if it's time to change phase
+  unsigned long current_time = millis();
   
-  // Optional: Automatic phase sweep for testing
-  // Uncomment to automatically sweep phase from 0° to 360°
-  /*
-  static unsigned long last_update = 0;
-  if (millis() - last_update > 100) {  // Update every 100ms
-    current_phase += 1.0f;  // 1° per update
-    if (current_phase >= 360.0f) {
-      current_phase = 0.0f;
-    }
-    levitation_set_phase(current_phase);
-    last_update = millis();
+  if (current_time - last_phase_change >= PHASE_SHIFT_INTERVAL) {
+    // Move to next phase value
+    phase_index = (phase_index + 1) % NUM_PHASE_VALUES;
+    float new_phase = PHASE_VALUES[phase_index];
     
-    if ((int)current_phase % 45 == 0) {  // Print every 45°
-      Serial.print("Phase: ");
-      Serial.print(current_phase);
-      Serial.println("°");
+    // Apply the new phase
+    levitation_set_phase(new_phase);
+    
+    // Print status
+    Serial.print(">>> Phase changed to: ");
+    Serial.print(new_phase);
+    Serial.print("° (");
+    
+    // Describe what should be visible
+    if (new_phase == 0.0f || new_phase == 360.0f) {
+      Serial.print("waves should overlap");
+    } else if (new_phase == 90.0f) {
+      Serial.print("1/4 cycle shift");
+    } else if (new_phase == 180.0f) {
+      Serial.print("waves inverted");
+    } else if (new_phase == 270.0f) {
+      Serial.print("3/4 cycle shift");
     }
+    Serial.println(")");
+    
+    // Update timer
+    last_phase_change = current_time;
   }
-  */
 }
