@@ -16,15 +16,7 @@
   const float INITIAL_PHASE = 0.0f;
 #endif
 
-// Phase shift test configuration
-const float PHASE_SHIFT_INTERVAL = 5000;  // Change phase every 5 seconds (5000ms)
-// Phase values to cycle through (in degrees)
-const float PHASE_VALUES[] = {0.0f, 90.0f, 180.0f, 270.0f, 360.0f};
-const int NUM_PHASE_VALUES = sizeof(PHASE_VALUES) / sizeof(PHASE_VALUES[0]);
-
-// Phase control variables
-int phase_index = 0;
-unsigned long last_phase_change = 0;
+// Test mode: Output identical sine waves on both channels
 
 void setup() {
   Serial.begin(921600);
@@ -33,12 +25,12 @@ void setup() {
   #if TEST_MODE_OSCILLOSCOPE
     Serial.println("========================================");
     Serial.println("ESP32 Acoustic Levitation System");
-    Serial.println("AUTOMATIC PHASE SHIFT TEST MODE");
+    Serial.println("IDENTICAL SINE WAVES TEST MODE");
     Serial.println("========================================");
     Serial.println();
     Serial.println("HARDWARE CONNECTIONS:");
-    Serial.println("  Oscilloscope Ch1 -> GPIO25 (DAC1) - Reference wave");
-    Serial.println("  Oscilloscope Ch2 -> GPIO26 (DAC2) - Phase-shifted wave");
+    Serial.println("  Oscilloscope Ch1 -> GPIO25 (DAC1)");
+    Serial.println("  Oscilloscope Ch2 -> GPIO26 (DAC2)");
     Serial.println("  Oscilloscope GND -> GND");
     Serial.println();
     Serial.println("RECOMMENDED SCOPE SETTINGS:");
@@ -46,12 +38,12 @@ void setup() {
     Serial.println("  Voltage: 500mV/div or 1V/div");
     Serial.println("  Coupling: DC");
     Serial.println("  Trigger: Ch1, Rising Edge");
-    Serial.println("  Try X-Y mode for phase visualization!");
+    Serial.println("  Try X-Y mode: Should show diagonal line!");
     Serial.println();
   #else
     Serial.println("========================================");
     Serial.println("ESP32 Acoustic Levitation System");
-    Serial.println("AUTOMATIC PHASE SHIFT MODE");
+    Serial.println("IDENTICAL SINE WAVES MODE");
     Serial.println("========================================");
     Serial.println();
   #endif
@@ -64,37 +56,34 @@ void setup() {
   if (levitation_init(ULTRASONIC_FREQUENCY, INITIAL_PHASE)) {
     Serial.println("✓ System initialized successfully!");
     Serial.println();
-    Serial.println("Channel 1 (GPIO25): Hardware cosine generator (reference - no phase shift)");
-    Serial.println("Channel 2 (GPIO26): Phase-shifted sine wave (automatically shifting every 5 seconds)");
+    Serial.println("Channel 1 (GPIO25): Sine wave");
+    Serial.println("Channel 2 (GPIO26): Sine wave");
+    Serial.println();
+    Serial.println("BOTH CHANNELS OUTPUT IDENTICAL SINE WAVES");
+    Serial.println("  - Same frequency");
+    Serial.println("  - Same amplitude");
+    Serial.println("  - Same phase");
+    Serial.println("  - Perfect synchronization");
     Serial.println();
     
     // Start the system
     levitation_start();
-    last_phase_change = millis();
     
-    Serial.println("✓ Levitation system started!");
+    Serial.println("✓ System started!");
     Serial.println();
-    Serial.println("AUTOMATIC PHASE SHIFT TEST:");
-    Serial.println("  Phase will cycle through: 0°, 90°, 180°, 270°, 360°");
-    Serial.println("  Each phase lasts 5 seconds");
+    Serial.println("TEST MODE: IDENTICAL SINE WAVES");
+    Serial.println("  Both channels output the EXACT same signal");
+    Serial.println("  Waves should overlap perfectly on oscilloscope");
     Serial.println();
     Serial.println("WHAT TO CHECK ON OSCILLOSCOPE:");
-    Serial.println("  - At 0°: Both waves should overlap perfectly");
-    Serial.println("  - At 90°: Waves should be 1/4 cycle apart");
-    Serial.println("  - At 180°: Waves should be inverted");
-    Serial.println("  - At 270°: Waves should be 3/4 cycle apart");
-    Serial.println("  - At 360°: Same as 0° (waves overlap)");
-    Serial.println("  - Use X-Y mode to see Lissajous patterns!");
+    Serial.println("  - Both waves should overlap perfectly");
+    Serial.println("  - Same frequency (measure with scope)");
+    Serial.println("  - Same amplitude (same voltage range)");
+    Serial.println("  - Same phase (no offset between waves)");
+    Serial.println("  - In X-Y mode: Should show a diagonal line");
     Serial.println();
-    Serial.println("Starting phase test in 2 seconds...");
+    Serial.println("System running...");
     Serial.println();
-    delay(2000);
-    
-    // Set initial phase and print
-    levitation_set_phase(PHASE_VALUES[0]);
-    Serial.print(">>> Phase set to: ");
-    Serial.print(PHASE_VALUES[0]);
-    Serial.println("°");
   } else {
     Serial.println("✗ Failed to initialize system!");
     Serial.println("Check your hardware connections.");
@@ -102,35 +91,7 @@ void setup() {
 }
 
 void loop() {
-  // Check if it's time to change phase
-  unsigned long current_time = millis();
-  
-  if (current_time - last_phase_change >= PHASE_SHIFT_INTERVAL) {
-    // Move to next phase value
-    phase_index = (phase_index + 1) % NUM_PHASE_VALUES;
-    float new_phase = PHASE_VALUES[phase_index];
-    
-    // Apply the new phase
-    levitation_set_phase(new_phase);
-    
-    // Print status
-    Serial.print(">>> Phase changed to: ");
-    Serial.print(new_phase);
-    Serial.print("° (");
-    
-    // Describe what should be visible
-    if (new_phase == 0.0f || new_phase == 360.0f) {
-      Serial.print("waves should overlap");
-    } else if (new_phase == 90.0f) {
-      Serial.print("1/4 cycle shift");
-    } else if (new_phase == 180.0f) {
-      Serial.print("waves inverted");
-    } else if (new_phase == 270.0f) {
-      Serial.print("3/4 cycle shift");
-    }
-    Serial.println(")");
-    
-    // Update timer
-    last_phase_change = current_time;
-  }
+  // For identical waves test, do nothing - both channels output identical signals continuously
+  // No phase shifting - just identical sine waves
+  delay(1000);
 }

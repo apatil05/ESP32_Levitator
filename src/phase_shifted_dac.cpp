@@ -38,6 +38,7 @@ void generate_sine_lut(uint8_t* lut, uint16_t size) {
 /**
  * Timer interrupt handler to output samples
  * Uses fixed-point arithmetic and lookup table to avoid floating point in ISR
+ * Outputs IDENTICAL sine wave to BOTH channels
  */
 void IRAM_ATTR timer_isr() {
     if (!g_running || !g_sine_lut) return;
@@ -46,8 +47,10 @@ void IRAM_ATTR timer_isr() {
     uint8_t lut_index = (g_phase_accumulator >> 8) & 0xFF;  // Use upper 8 bits for LUT index
     uint8_t dac_value = g_sine_lut[lut_index];
     
-    // Output to DAC channel 2 (GPIO26)
-    dacWrite(26, dac_value);
+    // Output IDENTICAL value to BOTH DAC channels simultaneously
+    // This ensures perfect synchronization, identical frequency, and identical amplitude
+    dacWrite(25, dac_value);  // Channel 1 (GPIO25)
+    dacWrite(26, dac_value);  // Channel 2 (GPIO26)
     
     // Update phase accumulator (fixed point)
     g_phase_accumulator += g_phase_increment;
@@ -70,15 +73,16 @@ bool phase_shifted_dac_init(float frequency, uint32_t sample_rate, float phase_s
     }
     generate_sine_lut(g_sine_lut, LUT_SIZE);
     
-    // Disable hardware cosine generator on channel 2 (we'll use timer interrupt instead)
+    // Disable hardware cosine generator on BOTH channels (we'll use timer interrupt for both)
+    CLEAR_PERI_REG_MASK(SENS_SAR_DAC_CTRL2_REG, SENS_DAC_CW_EN1_M);
     CLEAR_PERI_REG_MASK(SENS_SAR_DAC_CTRL2_REG, SENS_DAC_CW_EN2_M);
     
-    // Enable DAC channel 2
+    // Enable BOTH DAC channels - they will receive IDENTICAL output
+    dac_output_enable(DAC_CHANNEL_1);
     dac_output_enable(DAC_CHANNEL_2);
     
-    // Initialize phase accumulator with phase shift (fixed point: 65536 = 2π)
-    const uint32_t fixed_two_pi = 65536;
-    g_phase_accumulator = (uint32_t)((phase_shift / 360.0f) * fixed_two_pi) % fixed_two_pi;
+    // Initialize phase accumulator (start at 0 for identical waves)
+    g_phase_accumulator = 0;
     
     // Calculate phase increment (fixed point)
     // phase_increment = (2π * frequency / sample_rate) * (65536 / 2π) = frequency * 65536 / sample_rate
@@ -104,14 +108,9 @@ bool phase_shifted_dac_init(float frequency, uint32_t sample_rate, float phase_s
 }
 
 void phase_shifted_dac_set_phase(float phase_shift) {
-    g_phase_shift = fmodf(phase_shift, 360.0f);
-    if (g_phase_shift < 0) g_phase_shift += 360.0f;
-    
-    if (g_initialized) {
-        // Update phase accumulator with new phase shift (fixed point: 65536 = 2π)
-        const uint32_t fixed_two_pi = 65536;
-        g_phase_accumulator = (uint32_t)((g_phase_shift / 360.0f) * fixed_two_pi) % fixed_two_pi;
-    }
+    // For testing identical waves, phase is ignored - both channels stay identical
+    g_phase_shift = 0.0f;
+    // Both channels always output the same value, so phase shifting is disabled
 }
 
 void phase_shifted_dac_set_frequency(float frequency) {
