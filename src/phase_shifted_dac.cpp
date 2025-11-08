@@ -1,13 +1,14 @@
 #include "phase_shifted_dac.h"
 #include "driver/dac.h"
 #include "soc/sens_reg.h"
-#include "driver/timer.h"
 #include <math.h>
 
 // Timer configuration for sample output
 #define TIMER_DIVIDER 16
-#define TIMER_BASE_CLK 80000000  // 80 MHz APB clock
-#define TIMER_SCALE (TIMER_BASE_CLK / TIMER_DIVIDER)
+// Use APB clock frequency (typically 80 MHz) for timer calculations
+// In Arduino ESP32 framework, APB frequency is 80 MHz
+#define APB_FREQ 80000000
+#define TIMER_SCALE (APB_FREQ / TIMER_DIVIDER)
 
 static float g_frequency = 40000.0f;
 static float g_phase_shift = 0.0f;
@@ -95,7 +96,7 @@ bool phase_shifted_dac_init(float frequency, uint32_t sample_rate, float phase_s
     // Timer runs at TIMER_SCALE Hz, we need sample_rate interrupts per second
     uint64_t timer_period = TIMER_SCALE / sample_rate;
     timerAlarmWrite(g_timer, timer_period, true);  // true = auto-reload
-    timerAttachInterrupt(g_timer, &timer_isr);
+    timerAttachInterrupt(g_timer, &timer_isr, true);  // true = edge trigger
     timerWrite(g_timer, 0);
     
     g_initialized = true;
