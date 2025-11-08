@@ -217,4 +217,25 @@ void loop() {
     }
   }
   */
+  
+  // Phase shift iteration test - cycles through 0° to 360° in 45° steps
+  #define ENABLE_PHASE_ITERATION true
+  
+  #if ENABLE_PHASE_ITERATION
+  static unsigned long last_update = 0;
+  static float test_phase = 0.0f;
+  
+  if (millis() - last_update > 2000) {  // Update every 2 seconds
+    test_phase += 45.0f;
+    if (test_phase >= 360.0f) test_phase = 0.0f;
+    
+    current_phase = test_phase;
+    levitation_set_phase(current_phase);
+    Serial.print("Phase: ");
+    Serial.print(current_phase);
+    Serial.println("°");
+    
+    last_update = millis();
+  }
+  #endif
 }
