@@ -82,9 +82,9 @@ bool phase_shifted_dac_init(float frequency, uint32_t sample_rate, float phase_s
     const uint32_t fixed_two_pi = 65536;
     g_phase_accumulator = (uint32_t)((phase_shift / 360.0f) * fixed_two_pi) % fixed_two_pi;
     
-    // Calculate phase increment (fixed point)
+    // Calculate phase increment (fixed point) - round to nearest for exact frequency
     // phase_increment = (2π * frequency / sample_rate) * (65536 / 2π) = frequency * 65536 / sample_rate
-    g_phase_increment = (uint32_t)((frequency * 65536.0f) / sample_rate);
+    g_phase_increment = (uint32_t)((frequency * 65536.0f) / sample_rate + 0.5f);
     
     // Configure timer for sample output
     g_timer = timerBegin(0, TIMER_DIVIDER, true);
@@ -120,8 +120,8 @@ void phase_shifted_dac_set_frequency(float frequency) {
     g_frequency = frequency;
     
     if (g_initialized) {
-        // Recalculate phase increment (fixed point)
-        g_phase_increment = (uint32_t)((frequency * 65536.0f) / g_sample_rate);
+        // Recalculate phase increment (fixed point) - round to nearest for exact frequency
+        g_phase_increment = (uint32_t)((frequency * 65536.0f) / g_sample_rate + 0.5f);
     }
 }
 

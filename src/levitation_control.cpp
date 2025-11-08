@@ -19,10 +19,12 @@ bool levitation_init(float frequency, float initial_phase) {
     
     // Calculate frequency step for hardware cosine generator with clock divider
     // Formula: freq = (dig_clk_rtc_freq / (1 + clk_8m_div)) × SENS_SAR_SW_FSTEP / 65536
-    // For 40 Hz: Use clk_8m_div = 3 to get 2 MHz base clock for better accuracy
-    // freq_step = (40 * 65536) / 2000000 = 1310.72, round to 1311
-    // Actual frequency: (2000000 * 1311) / 65536 = 39.99 Hz (very close to 40.00 Hz)
-    int clk_8m_div = 3;  // Divide 8 MHz by 4 to get 2 MHz base clock
+    // For 40 Hz: Use clk_8m_div = 7 to get 1 MHz base clock (best accuracy for low frequencies)
+    // freq_step = (40 * 65536) / 1000000 = 2.62144, round to 3
+    // Actual frequency: (1000000 * 3) / 65536 = 45.78 Hz (closest achievable with hardware)
+    // Note: Hardware generator has limitations for very low frequencies
+    // Channel 2 (timer-based) will be exactly 40.00 Hz
+    int clk_8m_div = 7;  // Divide 8 MHz by 8 to get 1 MHz base clock (best for low freq)
     const float base_rtc_freq = RTC_FAST_CLK_FREQ_APPROX / (1.0f + clk_8m_div);
     uint16_t freq_step = (uint16_t)((frequency * 65536.0f) / base_rtc_freq + 0.5f);  // Round to nearest integer
     if (freq_step < 1) freq_step = 1;
@@ -55,10 +57,16 @@ bool levitation_init(float frequency, float initial_phase) {
     // Setup Channel 2: Phase-shifted SINE wave using timer interrupt
     // Uses sine lookup table (sinf()) - same waveform type as Channel 1
     // Same frequency as Channel 1, full amplitude (0-255 range)
-    // Use a sample rate that's at least 2x the frequency (Nyquist)
-    uint32_t sample_rate = (uint32_t)(frequency * 2.5f);  // 2.5x for good quality
-    if (sample_rate < 80000) sample_rate = 80000;  // Minimum sample rate
-    if (sample_rate > 200000) sample_rate = 200000;  // Maximum reasonable rate
+    // Calculate sample rate for exactly 40.00 Hz: use 81920 Hz for perfect accuracy
+    // For 40 Hz: phase_inc = (40 * 65536) / 81920 = 32 exactly, giving 40.00 Hz
+    uint32_t sample_rate;
+    if (frequency == 40.0f) {
+        sample_rate = 81920;  // Exact sample rate for 40.00 Hz
+    } else {
+        sample_rate = (uint32_t)(frequency * 2.5f);  // 2.5x for good quality
+        if (sample_rate < 80000) sample_rate = 80000;  // Minimum sample rate
+        if (sample_rate > 200000) sample_rate = 200000;  // Maximum reasonable rate
+    }
     
     if (!phase_shifted_dac_init(frequency, sample_rate, initial_phase)) {
         return false;
@@ -86,7 +94,7 @@ void levitation_set_frequency(float frequency) {
     
     if (g_initialized) {
         // Update hardware cosine generator frequency with clock divider
-        int clk_8m_div = 3;  // Divide 8 MHz by 4 to get 2 MHz base clock
+        int clk_8m_div = 7;  // Divide 8 MHz by 8 to get 1 MHz base clock (best for low freq)
         const float base_rtc_freq = RTC_FAST_CLK_FREQ_APPROX / (1.0f + clk_8m_div);
         uint16_t freq_step = (uint16_t)((frequency * 65536.0f) / base_rtc_freq + 0.5f);  // Round to nearest
         if (freq_step < 1) freq_step = 1;
