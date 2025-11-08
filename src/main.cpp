@@ -20,16 +20,46 @@ static const dac_channel_t DAC_CH2 = DAC_CHANNEL_2;  // GPIO26
 
 // ---------- GLOBALS ----------
 hw_timer_t *g_timer = nullptr;
-volatile uint8_t g_level = 0;  // 0 or 255 (square)
+volatile uint8_t g_level_ch1 = 0;      // DAC1 level (reference, no phase shift)
+volatile uint8_t g_level_ch2 = 0;      // DAC2 level (phase-shifted)
+volatile uint32_t g_cycle_counter = 0; // Counter for phase delay calculation
+volatile float g_phase_shift_degrees = 0.0f;  // Current phase shift in degrees
 
 // ---------- ISR ----------
 void IRAM_ATTR onTimerISR() {
-  // Toggle between low and high
-  g_level = g_level ? 0 : 255;
-
-  // Output same value on both DACs
-  dac_output_voltage(DAC_CH1, g_level);
-  dac_output_voltage(DAC_CH2, g_level);
+  // Toggle DAC1 (reference - no phase shift, always toggles)
+  g_level_ch1 = g_level_ch1 ? 0 : 255;
+  dac_output_voltage(DAC_CH1, g_level_ch1);
+  
+  // For DAC2: Calculate phase-shifted output
+  // Phase shift = delay in degrees
+  // For square wave: delay = (phase_shift / 360°) * period
+  // Since we toggle every half-period, delay in half-periods = (phase_shift / 360°) * 2
+  // 0° = no delay (same as CH1)
+  // 180° = half period delay (inverted)
+  // 90° = quarter period delay (needs 0.5 half-periods)
+  
+  // Calculate how many half-periods to delay
+  float phase_shift_normalized = g_phase_shift_degrees / 360.0f;  // 0.0 to 1.0
+  float delay_half_periods = phase_shift_normalized * 2.0f;  // 0.0 to 2.0
+  
+  // For square waves, we can only delay by integer half-periods easily
+  // So we round to nearest half-period for simplicity
+  // This means: 0-45° ≈ 0, 45-135° ≈ 90°, 135-225° ≈ 180°, etc.
+  uint32_t delay_half_periods_int = (uint32_t)(delay_half_periods + 0.5f);
+  
+  // Calculate the phase-shifted cycle position
+  // If delay is 0: same as current cycle
+  // If delay is 1: opposite of current cycle (90° shift)
+  // If delay is 2: same as current cycle (180° shift = inverted)
+  uint32_t shifted_cycle = (g_cycle_counter + delay_half_periods_int) % 2;
+  
+  // Set DAC2 level based on shifted cycle
+  g_level_ch2 = shifted_cycle ? 255 : 0;
+  dac_output_voltage(DAC_CH2, g_level_ch2);
+  
+  // Increment cycle counter (0 or 1 for square wave)
+  g_cycle_counter = (g_cycle_counter + 1) % 2;
 }
 
 // ---------- SETUP ----------
@@ -69,7 +99,30 @@ void setup() {
   timerAlarmEnable(g_timer);                             // start timer
 }
 
+// Function to set phase shift (called from main loop, not ISR)
+void setPhaseShift(float phase_degrees) {
+  // Normalize to 0-360 range
+  while (phase_degrees < 0) phase_degrees += 360.0f;
+  while (phase_degrees >= 360.0f) phase_degrees -= 360.0f;
+  g_phase_shift_degrees = phase_degrees;
+}
+
 void loop() {
-  // Nothing here; waveform generated entirely by the timer ISR
+  // Phase shift iteration - cycles through different phase values
+  static unsigned long last_update = 0;
+  static float test_phase = 0.0f;
+  
+  if (millis() - last_update > 2000) {  // Update every 2 seconds
+    test_phase += 45.0f;  // Increment by 45° each step
+    if (test_phase >= 360.0f) test_phase = 0.0f;
+    
+    setPhaseShift(test_phase);
+    
+    Serial.print("Phase shift: ");
+    Serial.print(test_phase);
+    Serial.println("°");
+    
+    last_update = millis();
+  }
 }
 
