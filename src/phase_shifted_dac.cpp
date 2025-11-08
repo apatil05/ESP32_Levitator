@@ -25,12 +25,14 @@ static const uint16_t LUT_SIZE = 256;              // Lookup table size
 
 /**
  * Generate sine lookup table (0-255 for 0-2π)
+ * Centered around midpoint (127.5 = 1.65V) with full amplitude
  */
 void generate_sine_lut(uint8_t* lut, uint16_t size) {
     for (uint16_t i = 0; i < size; i++) {
         float angle = 2.0f * M_PI * i / size;
         float value = sinf(angle);
         // Convert from [-1, 1] to [0, 255] for 8-bit DAC
+        // This creates a sine wave from 0V to 3.3V (centered at 1.65V)
         lut[i] = (uint8_t)((value + 1.0f) * 127.5f);
     }
 }

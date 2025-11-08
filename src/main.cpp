@@ -7,8 +7,8 @@
 #define TEST_MODE_OSCILLOSCOPE true  // Set to true for oscilloscope testing, false for production
 
 #if TEST_MODE_OSCILLOSCOPE
-  // Test mode: Lower frequency for oscilloscope viewing
-  const float ULTRASONIC_FREQUENCY = 1000.0f;  // 1 kHz - easy to see on scope
+  // Test mode: Higher frequency for better oscilloscope visibility
+  const float ULTRASONIC_FREQUENCY = 10000.0f;  // 10 kHz - good visibility on scope
   const float INITIAL_PHASE = 0.0f;
 #else
   // Production mode: Ultrasonic frequency for levitation
@@ -34,7 +34,7 @@ void setup() {
     Serial.println("  Oscilloscope GND -> GND");
     Serial.println();
     Serial.println("RECOMMENDED SCOPE SETTINGS:");
-    Serial.println("  Timebase: 200us/div to 1ms/div");
+    Serial.println("  Timebase: 10us/div to 50us/div (10 kHz = 100us period)");
     Serial.println("  Voltage: 500mV/div or 1V/div");
     Serial.println("  Coupling: DC");
     Serial.println("  Trigger: Ch1, Rising Edge");
