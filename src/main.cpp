@@ -5,6 +5,7 @@
 #include "esp32-hal-timer.h"
 #include "FS.h"
 #include "SPIFFS.h"
+#include <math.h>
 
 // ===== CONFIG =====
 static const float BASE_FREQUENCY_HZ = 40000.0f;     // 40 kHz
@@ -31,6 +32,12 @@ volatile int32_t phaseTicks = 0;
 // phase offset in ticks
 uint32_t tickCounter = 0;
 
+// Smooth phase transition variables
+float targetPhaseDegrees = 0.0f;
+float currentPhaseDegrees = 0.0f;
+float phaseTransitionRate = 90.0f;  // degrees per second for smooth transition
+unsigned long lastPhaseUpdateMs = 0;
+
 // ===== ISR =====
 void IRAM_ATTR onTimerISR() {
   tickCounter += HALF_PERIOD_TICKS;
@@ -50,11 +57,58 @@ void setPhaseDegrees(float degrees) {
   while (degrees < 0) degrees += 360.0f;
   while (degrees >= 360.0f) degrees -= 360.0f;
 
-  float ticksPerCycle = 2.0f * (float)HALF_PERIOD_TICKS;
-  phaseTicks = (int32_t)((degrees / 360.0f) * ticksPerCycle);
+  // Set target phase (will be smoothly interpolated to)
+  targetPhaseDegrees = degrees;
+  
+  Serial.printf("Target phase set to %.1f° (currently %.1f°)\n",
+                targetPhaseDegrees, currentPhaseDegrees);
+}
 
-  Serial.printf("Phase = %.1f° → %ld ticks (%.2f µs)\n",
-                degrees, phaseTicks, phaseTicks * 0.025f);
+void updatePhaseSmoothly() {
+  unsigned long currentMs = millis();
+  if (lastPhaseUpdateMs == 0) {
+    lastPhaseUpdateMs = currentMs;
+    return;
+  }
+  
+  float deltaTime = (currentMs - lastPhaseUpdateMs) / 1000.0f;  // Convert to seconds
+  lastPhaseUpdateMs = currentMs;
+  
+  // Clamp deltaTime to prevent issues with long delays (max 100ms)
+  if (deltaTime > 0.1f) {
+    deltaTime = 0.1f;
+  }
+  
+  // Check if we need to transition
+  float phaseDiff = targetPhaseDegrees - currentPhaseDegrees;
+  
+  // Handle wraparound (choose shortest path)
+  if (phaseDiff > 180.0f) {
+    phaseDiff -= 360.0f;
+  } else if (phaseDiff < -180.0f) {
+    phaseDiff += 360.0f;
+  }
+  
+  // If we're close enough, snap to target
+  if (fabsf(phaseDiff) < 0.1f) {
+    currentPhaseDegrees = targetPhaseDegrees;
+  } else {
+    // Smoothly interpolate towards target
+    float maxChange = phaseTransitionRate * deltaTime;
+    if (fabsf(phaseDiff) <= maxChange) {
+      currentPhaseDegrees = targetPhaseDegrees;
+    } else {
+      currentPhaseDegrees += (phaseDiff > 0 ? maxChange : -maxChange);
+    }
+    
+    // Normalize to 0-360 range
+    while (currentPhaseDegrees < 0) currentPhaseDegrees += 360.0f;
+    while (currentPhaseDegrees >= 360.0f) currentPhaseDegrees -= 360.0f;
+  }
+  
+  // Update phaseTicks for ISR
+  float ticksPerCycle = 2.0f * (float)HALF_PERIOD_TICKS;
+  phaseTicks = (int32_t)((currentPhaseDegrees / 360.0f) * ticksPerCycle);
 }
 
 
@@ -92,6 +146,11 @@ void setup() {
   // --- DAC ---
   dac_output_enable(DAC_CH1);
   dac_output_enable(DAC_CH2);
+  
+  // Initialize phase tracking
+  targetPhaseDegrees = 0.0f;
+  currentPhaseDegrees = 0.0f;
+  lastPhaseUpdateMs = millis();
   setPhaseDegrees(0.0f);
 
   // --- SPIFFS ---
@@ -124,4 +183,5 @@ void setup() {
 // ===== LOOP =====
 void loop() {
   server.handleClient();
+  updatePhaseSmoothly();  // Smoothly transition phase
 }
