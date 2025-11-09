@@ -138,6 +138,20 @@
       margin: 0 auto;
       z-index: 2;
     }
+
+    /* ---------- PHASE DISPLAY ---------- */
+    .phase-display {
+      position: relative;
+      z-index: 3;
+      margin-top: 1.5rem;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #00ffff;
+      text-shadow: 0 0 10px #00ffff;
+      font-family: 'Orbitron', monospace;
+      letter-spacing: 0.1em;
+      transition: transform 0.15s ease-out;
+    }
     
   </style>
 </head>
@@ -159,6 +173,9 @@
     <div id="ball"></div>
   </div>
 
+  <!-- Phase Display -->
+  <div class="phase-display" id="phaseDisplay">0.0°</div>
+
   <!-- JS Logic -->
   <script>
     const ball = document.getElementById('ball');
@@ -176,21 +193,77 @@
       activateGlow();
       const phase = clampedToPhase(clamped);
       sendPhase(phase);
+      
+      // Update visual feedback with current phase
+      updatePhaseDisplay(phase);
+    }
+
+    function updatePhaseDisplay(phase) {
+      // Update the phase display element
+      const display = document.getElementById('phaseDisplay');
+      if (display) {
+        display.textContent = phase.toFixed(1) + '°';
+        // Add a subtle pulse effect when phase changes
+        display.style.transform = 'scale(1.1)';
+        setTimeout(() => {
+          display.style.transform = 'scale(1.0)';
+        }, 150);
+      }
+    }
+
+    // Initialize phase display
+    const phaseDisplay = document.getElementById('phaseDisplay');
+    if (phaseDisplay) {
+      window.phaseDisplay = phaseDisplay;
+      updatePhaseDisplay(0);
     }
 
     function clampedToPhase(clamped) {
-      // Map Y% (6–65%) → phase 0–180°
-      return Math.round(((clamped - 6) / (65 - 6)) * 180);
+      // Map Y% (6–65%) → phase 0–360° for full range control
+      // Use decimal precision for smooth, continuous phase shifts
+      return ((clamped - 6) / (65 - 6)) * 360.0;
     }
 
-    function sendPhase(deg) {
-      // Prevent excessive requests
-      if (Math.abs(deg - lastSentPhase) < 2) return;
-      lastSentPhase = deg;
+    // Throttle function to limit request rate while keeping smooth updates
+    let phaseUpdateTimeout = null;
+    let pendingPhase = null;
 
-      fetch(`/set_phase?deg=${deg}`)
+    function sendPhase(deg) {
+      // Store the latest phase value
+      pendingPhase = deg;
+      
+      // Clear any pending timeout
+      if (phaseUpdateTimeout) {
+        clearTimeout(phaseUpdateTimeout);
+      }
+      
+      // Send immediately if it's been a while, otherwise throttle
+      const timeSinceLastSend = Date.now() - (sendPhase.lastSendTime || 0);
+      if (timeSinceLastSend > 50) { // Send immediately if >50ms since last
+        actuallySendPhase(deg);
+      } else {
+        // Throttle: send after a short delay, but only the latest value
+        phaseUpdateTimeout = setTimeout(() => {
+          if (pendingPhase !== null) {
+            actuallySendPhase(pendingPhase);
+            pendingPhase = null;
+          }
+        }, 20); // Send at most every 20ms (50 updates/sec)
+      }
+    }
+
+    function actuallySendPhase(deg) {
+      // Only send if phase changed significantly (0.1° threshold for smoothness)
+      if (Math.abs(deg - lastSentPhase) < 0.1) return;
+      lastSentPhase = deg;
+      sendPhase.lastSendTime = Date.now();
+
+      // Send with 2 decimal precision for fine control
+      fetch(`/set_phase?deg=${deg.toFixed(2)}`)
         .then(r => r.json())
-        .then(d => console.log("Phase set to", d.phase))
+        .then(d => {
+          console.log("Phase set to", parseFloat(d.phase).toFixed(2) + "°");
+        })
         .catch(e => console.error("Error sending phase:", e));
     }
 
@@ -227,8 +300,11 @@
     document.addEventListener('keydown', (e) => {
       let current = parseFloat(getComputedStyle(ball).top) / container.clientHeight * 100;
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        if (e.key === 'ArrowUp') moveBallTo(current - 5);
-        if (e.key === 'ArrowDown') moveBallTo(current + 5);
+        // Finer keyboard control (1% increments instead of 5%)
+        const increment = 1.0; // 1% = ~6° phase shift
+        if (e.key === 'ArrowUp') moveBallTo(current - increment);
+        if (e.key === 'ArrowDown') moveBallTo(current + increment);
+        e.preventDefault(); // Prevent page scrolling
       }
     });
 

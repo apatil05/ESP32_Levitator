@@ -47,14 +47,25 @@ void IRAM_ATTR onTimerISR() {
 
 // ===== PHASE CONTROL =====
 void setPhaseDegrees(float degrees) {
+  // Normalize to 0-360 range
   while (degrees < 0) degrees += 360.0f;
   while (degrees >= 360.0f) degrees -= 360.0f;
 
+  // Calculate phase offset in ticks with high precision
+  // For square wave: period = 2 * HALF_PERIOD_TICKS
   float ticksPerCycle = 2.0f * (float)HALF_PERIOD_TICKS;
-  phaseTicks = (int32_t)((degrees / 360.0f) * ticksPerCycle);
+  float phaseTicksFloat = (degrees / 360.0f) * ticksPerCycle;
+  
+  // Round to nearest tick for precise positioning
+  phaseTicks = (int32_t)(phaseTicksFloat + 0.5f);
 
-  Serial.printf("Phase = %.1f° → %ld ticks (%.2f µs)\n",
-                degrees, phaseTicks, phaseTicks * 0.025f);
+  // Only print occasionally to avoid Serial spam (every 5° change)
+  static float lastPrintedPhase = -1.0f;
+  if (fabs(degrees - lastPrintedPhase) >= 5.0f) {
+    Serial.printf("Phase = %.2f° → %ld ticks (%.2f µs)\n",
+                  degrees, phaseTicks, phaseTicks * 0.025f);
+    lastPrintedPhase = degrees;
+  }
 }
 
 
@@ -79,7 +90,8 @@ void handleSetPhase() {
   float deg = server.arg("deg").toFloat();
   setPhaseDegrees(deg);
 
-  String json = "{\"success\":true,\"phase\":" + String(deg, 1) + "}";
+  // Return with 2 decimal precision for fine control
+  String json = "{\"success\":true,\"phase\":" + String(deg, 2) + "}";
   server.send(200, "application/json", json);
 }
 
