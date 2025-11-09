@@ -15,8 +15,9 @@
 #define LEDC_MODE               LEDC_HIGH_SPEED_MODE
 #define LEDC_CHANNEL_CH1        LEDC_CHANNEL_0
 #define LEDC_CHANNEL_CH2        LEDC_CHANNEL_1
-#define LEDC_DUTY_RES           LEDC_TIMER_13_BIT
-#define LEDC_DUTY_50_PERCENT    4096        // 50% duty (8192/2)
+#define LEDC_DUTY_RES           LEDC_TIMER_10_BIT  // 10-bit for 40 kHz (1024 steps)
+#define LEDC_DUTY_50_PERCENT    512         // 50% duty (1024/2)
+#define LEDC_MAX_STEPS          1024        // For phase calculation
 
 // Wi-Fi AP credentials
 const char *AP_SSID = "ONDA";
@@ -31,8 +32,8 @@ void setPhaseDegrees(float degrees) {
   while (degrees < 0) degrees += 360.0f;
   while (degrees >= 360.0f) degrees -= 360.0f;
   
-  // Convert phase to hpoint: 360° = 8192 steps (full period)
-  uint32_t hpoint = (uint32_t)((degrees / 360.0f) * 8192.0f + 0.5f);
+  // Convert phase to hpoint: 360° = 1024 steps (full period)
+  uint32_t hpoint = (uint32_t)((degrees / 360.0f) * (float)LEDC_MAX_STEPS + 0.5f);
   
   // Reconfigure Channel 2 with new phase
   ledc_channel_config_t cfg;
