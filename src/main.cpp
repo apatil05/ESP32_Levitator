@@ -41,8 +41,16 @@ void setPhaseDegrees(float degrees) {
   uint32_t max_hpoint = LEDC_MAX_DUTY - LEDC_DUTY_50_PERCENT;
   current_phase_hpoint = (uint32_t)((degrees / 360.0f) * (float)max_hpoint + 0.5f);
   
-  // Update Channel 2's hpoint to shift phase
-  ledc_set_hpoint(LEDC_MODE, LEDC_CHANNEL_CH2, current_phase_hpoint);
+  // Reconfigure Channel 2 with new hpoint (hpoint can only be set during channel config)
+  ledc_channel_config_t channel2_config;
+  channel2_config.gpio_num = GPIO_CH2;
+  channel2_config.speed_mode = LEDC_MODE;
+  channel2_config.channel = LEDC_CHANNEL_CH2;
+  channel2_config.timer_sel = LEDC_TIMER;
+  channel2_config.duty = LEDC_DUTY_50_PERCENT;
+  channel2_config.hpoint = current_phase_hpoint;
+  channel2_config.intr_type = LEDC_INTR_DISABLE;
+  ledc_channel_config(&channel2_config);
   
   Serial.printf("Phase set to: %.1f° (hpoint: %u)\n", degrees, current_phase_hpoint);
 }
