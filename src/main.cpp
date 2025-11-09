@@ -75,10 +75,12 @@ void handleSetPhase() {
 
   float deg = server.arg("deg").toFloat();
   setPhaseDegrees(deg);
+  Serial.printf("[HTTP] Phase set to %.1f°\n", deg);
 
   String json = "{\"success\":true,\"phase\":" + String(deg, 1) + "}";
   server.send(200, "application/json", json);
 }
+
 
 // ===== SETUP =====
 void setup() {
