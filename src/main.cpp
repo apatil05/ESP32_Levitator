@@ -16,9 +16,11 @@ const int GPIO_CH2 = 3;  // Channel 2 output pin
 // Note: Using timer-based GPIO control for square waves (more precise than PWM for phase shifting)
 
 // Timer for phase-shifted square wave generation
-// ESP32-C3: APB clock is 80 MHz
+// ESP32-C3: APB clock is 80 MHz (already defined in SDK as APB_CLK_FREQ)
 #define TIMER_DIVIDER      2
+#ifndef APB_CLK_FREQ
 #define APB_CLK_FREQ       80000000
+#endif
 #define TIMER_TICKS_PER_S  (APB_CLK_FREQ / TIMER_DIVIDER)
 const uint32_t PERIOD_TICKS = TIMER_TICKS_PER_S / (uint32_t)BASE_FREQUENCY_HZ;  // 1000 ticks
 const uint32_t HALF_PERIOD_TICKS = PERIOD_TICKS / 2;  // 500 ticks
