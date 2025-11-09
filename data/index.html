@@ -131,7 +131,7 @@
     .container {
       position: relative;
       width: 22rem;
-      height: 22rem;
+      height: 30rem;  /* Increased height for larger travel area */
       border: 2px solid rgba(255, 255, 255, 0.1);
       border-radius: 1rem;
       backdrop-filter: blur(8px);
@@ -172,7 +172,8 @@
     let lastSentPhase = -1;
 
     function moveBallTo(yPercent) {
-      const clamped = Math.min(65, Math.max(6, yPercent));
+      // Expanded range: 5% to 90% (85% travel area for finer control)
+      const clamped = Math.min(90, Math.max(5, yPercent));
       ball.style.top = clamped + '%';
       activateGlow();
       const phase = clampedToPhase(clamped);
@@ -180,13 +181,14 @@
     }
 
     function clampedToPhase(clamped) {
-      // Map Y% (6–65%) → phase 0–360° with decimal precision
-      return ((clamped - 6) / (65 - 6)) * 360;
+      // Map Y% (5–90%) → phase 0–360° with decimal precision
+      // Larger range = finer phase control
+      return ((clamped - 5) / (90 - 5)) * 360;
     }
 
     function sendPhase(deg) {
       // Prevent excessive requests - use smaller threshold for smoother control
-      if (Math.abs(deg - lastSentPhase) < 0.5) return;
+      if (Math.abs(deg - lastSentPhase) < 0.2) return;
       lastSentPhase = deg;
 
       fetch(`/set_phase?deg=${deg.toFixed(1)}`)
@@ -237,8 +239,10 @@
     document.addEventListener('keydown', (e) => {
       let current = parseFloat(getComputedStyle(ball).top) / container.clientHeight * 100;
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        if (e.key === 'ArrowUp') moveBallTo(current - 5);
-        if (e.key === 'ArrowDown') moveBallTo(current + 5);
+        e.preventDefault(); // Prevent page scrolling
+        // Reduced sensitivity: 0.5% increments instead of 5%
+        if (e.key === 'ArrowUp') moveBallTo(current - 0.5);
+        if (e.key === 'ArrowDown') moveBallTo(current + 0.5);
       }
     });
 
