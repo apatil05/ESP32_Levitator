@@ -224,47 +224,46 @@
       return ((clamped - 6) / (65 - 6)) * 360.0;
     }
 
-    // Throttle function to limit request rate while keeping smooth updates
+    // Simplified throttling - send updates smoothly without overwhelming the server
     let phaseUpdateTimeout = null;
-    let pendingPhase = null;
+    let lastSendTime = 0;
 
     function sendPhase(deg) {
-      // Store the latest phase value
-      pendingPhase = deg;
+      const now = Date.now();
       
-      // Clear any pending timeout
-      if (phaseUpdateTimeout) {
-        clearTimeout(phaseUpdateTimeout);
-      }
+      // Only send if phase changed significantly (0.5° threshold)
+      if (Math.abs(deg - lastSentPhase) < 0.5) return;
       
-      // Send immediately if it's been a while, otherwise throttle
-      const timeSinceLastSend = Date.now() - (sendPhase.lastSendTime || 0);
-      if (timeSinceLastSend > 50) { // Send immediately if >50ms since last
-        actuallySendPhase(deg);
-      } else {
-        // Throttle: send after a short delay, but only the latest value
+      // Throttle: don't send more than every 30ms
+      if (now - lastSendTime < 30) {
+        // Clear any pending timeout and set a new one
+        if (phaseUpdateTimeout) {
+          clearTimeout(phaseUpdateTimeout);
+        }
         phaseUpdateTimeout = setTimeout(() => {
-          if (pendingPhase !== null) {
-            actuallySendPhase(pendingPhase);
-            pendingPhase = null;
-          }
-        }, 20); // Send at most every 20ms (50 updates/sec)
+          sendPhase(deg); // Retry with current value
+        }, 30);
+        return;
       }
-    }
-
-    function actuallySendPhase(deg) {
-      // Only send if phase changed significantly (0.1° threshold for smoothness)
-      if (Math.abs(deg - lastSentPhase) < 0.1) return;
+      
+      // Send the phase update
       lastSentPhase = deg;
-      sendPhase.lastSendTime = Date.now();
-
-      // Send with 2 decimal precision for fine control
+      lastSendTime = now;
+      
       fetch(`/set_phase?deg=${deg.toFixed(2)}`)
-        .then(r => r.json())
-        .then(d => {
-          console.log("Phase set to", parseFloat(d.phase).toFixed(2) + "°");
+        .then(r => {
+          if (!r.ok) throw new Error('HTTP error');
+          return r.json();
         })
-        .catch(e => console.error("Error sending phase:", e));
+        .then(d => {
+          // Success - phase updated
+          if (d.success) {
+            console.log("Phase:", parseFloat(d.phase).toFixed(1) + "°");
+          }
+        })
+        .catch(e => {
+          console.error("Phase update error:", e);
+        });
     }
 
     function activateGlow() {

@@ -27,21 +27,28 @@ WebServer server(80);
 
 volatile bool level_ch1 = false;
 volatile bool level_ch2 = false;
-volatile int32_t phaseTicks = 0;
-// phase offset in ticks
-uint32_t tickCounter = 0;
+volatile int32_t phaseTicks = 0;  // phase offset in ticks
+volatile uint32_t tickCounter = 0;
 
 // ===== ISR =====
 void IRAM_ATTR onTimerISR() {
-  tickCounter += HALF_PERIOD_TICKS;
-
-  // Channel 1 toggles every interrupt
+  // Channel 1 toggles every interrupt (reference, no phase shift)
   level_ch1 = !level_ch1;
   dac_output_voltage(DAC_CH1, level_ch1 ? 255 : 0);
 
-  // Channel 2 toggles based on phase offset
-  int32_t offsetCounter = (tickCounter + phaseTicks) % (2 * HALF_PERIOD_TICKS);
-  bool ch2_state = offsetCounter < HALF_PERIOD_TICKS;
+  // Channel 2: Calculate phase-shifted position
+  tickCounter += HALF_PERIOD_TICKS;
+  
+  // Calculate phase-shifted position
+  // phaseTicks is always 0-1000 (0-360°), so we can use it directly
+  const uint32_t period = 2 * HALF_PERIOD_TICKS;  // 1000 ticks
+  uint32_t phaseOffset = (uint32_t)phaseTicks % period;  // Normalize to 0-1000
+  
+  // Calculate offset position in the period
+  uint32_t offsetPos = (tickCounter + phaseOffset) % period;
+  
+  // Determine state: first half = high, second half = low
+  bool ch2_state = (offsetPos < HALF_PERIOD_TICKS);
   dac_output_voltage(DAC_CH2, ch2_state ? 255 : 0);
 }
 
