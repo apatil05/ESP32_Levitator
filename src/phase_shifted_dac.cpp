@@ -21,7 +21,10 @@ static hw_timer_t* g_timer = nullptr;
 static volatile uint32_t g_phase_accumulator = 0;  // Fixed point: 0-65535 represents 0-2π
 static volatile uint32_t g_phase_increment = 0;    // Fixed point phase increment
 static uint8_t* g_sine_lut = nullptr;              // Sine lookup table
-static const uint16_t LUT_SIZE = 256;              // Lookup table size
+static const uint16_t LUT_SIZE = 2048;             // Lookup table size (2048 = 0.176° resolution)
+static const uint32_t LUT_SIZE_MASK = LUT_SIZE - 1; // Bit mask for LUT indexing
+static const uint32_t PHASE_SHIFT_BITS = 5;        // Bits to shift: 65536/2048 = 32 = 2^5
+static const uint32_t FRACTIONAL_MASK = 0x1F;      // Low 5 bits for interpolation
 
 /**
  * Generate sine lookup table (0-255 for 0-2π)
@@ -37,14 +40,36 @@ void generate_sine_lut(uint8_t* lut, uint16_t size) {
 
 /**
  * Timer interrupt handler to output samples
- * Uses fixed-point arithmetic and lookup table to avoid floating point in ISR
+ * Uses fixed-point arithmetic and lookup table with linear interpolation
+ * to avoid floating point in ISR while maintaining smooth transitions
  */
 void IRAM_ATTR timer_isr() {
     if (!g_running || !g_sine_lut) return;
     
-    // Get sample from lookup table using fixed-point phase
-    uint8_t lut_index = (g_phase_accumulator >> 8) & 0xFF;  // Use upper 8 bits for LUT index
-    uint8_t dac_value = g_sine_lut[lut_index];
+    // Get LUT index and fractional part for interpolation
+    // Phase accumulator: 16-bit (0-65535 = 0-2π)
+    // LUT_SIZE: 2048, so we need to divide by 32 (65536/2048 = 32 = 2^5)
+    uint32_t phase_scaled = g_phase_accumulator >> PHASE_SHIFT_BITS;
+    uint16_t lut_index1 = phase_scaled & LUT_SIZE_MASK;
+    uint16_t lut_index2 = (lut_index1 + 1) & LUT_SIZE_MASK;  // Wrap around
+    
+    // Get fractional part (0-31) for interpolation
+    uint32_t fractional = g_phase_accumulator & FRACTIONAL_MASK;
+    
+    // Linear interpolation between two LUT entries
+    uint16_t value1 = g_sine_lut[lut_index1];
+    uint16_t value2 = g_sine_lut[lut_index2];
+    
+    // Interpolate: result = value1 + (value2 - value1) * fractional / 32
+    // Using integer arithmetic: multiply first, then divide
+    int16_t diff = (int16_t)value2 - (int16_t)value1;
+    int32_t delta = ((int32_t)diff * (int32_t)fractional) >> PHASE_SHIFT_BITS;
+    int32_t interpolated = (int32_t)value1 + delta;
+    
+    // Clamp to 8-bit range
+    if (interpolated < 0) interpolated = 0;
+    if (interpolated > 255) interpolated = 255;
+    uint8_t dac_value = (uint8_t)interpolated;
     
     // Output to DAC channel 2 (GPIO26)
     dacWrite(26, dac_value);
@@ -63,7 +88,7 @@ bool phase_shifted_dac_init(float frequency, uint32_t sample_rate, float phase_s
     g_phase_shift = phase_shift;
     g_sample_rate = sample_rate;
     
-    // Allocate and generate sine lookup table
+    // Allocate and generate sine lookup table (larger for finer resolution)
     g_sine_lut = (uint8_t*)malloc(LUT_SIZE);
     if (!g_sine_lut) {
         return false;

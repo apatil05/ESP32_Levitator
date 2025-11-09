@@ -27,8 +27,9 @@ WebServer server(80);
 
 volatile bool level_ch1 = false;
 volatile bool level_ch2 = false;
-volatile int32_t phaseTicks = 0;   // phase offset in ticks
-uint32_t tickCounter = 0;
+// Use 64-bit for higher precision phase calculation to avoid quantization errors
+volatile int64_t phaseTicks64 = 0;   // phase offset in ticks (64-bit for precision)
+volatile uint32_t tickCounter = 0;
 
 // ===== ISR =====
 void IRAM_ATTR onTimerISR() {
@@ -39,7 +40,13 @@ void IRAM_ATTR onTimerISR() {
   dac_output_voltage(DAC_CH1, level_ch1 ? 255 : 0);
 
   // Channel 2 toggles based on phase offset
-  int32_t offsetCounter = (tickCounter + phaseTicks) % (2 * HALF_PERIOD_TICKS);
+  // Use 64-bit arithmetic for precision, then reduce to 32-bit for modulo
+  int64_t totalTicks = (int64_t)tickCounter + phaseTicks64;
+  uint32_t cycleLength = 2 * HALF_PERIOD_TICKS;
+  // Handle modulo with proper sign handling
+  int64_t offsetCounter64 = totalTicks % (int64_t)cycleLength;
+  if (offsetCounter64 < 0) offsetCounter64 += cycleLength;
+  uint32_t offsetCounter = (uint32_t)offsetCounter64;
   bool ch2_state = offsetCounter < HALF_PERIOD_TICKS;
   dac_output_voltage(DAC_CH2, ch2_state ? 255 : 0);
 }
@@ -49,11 +56,17 @@ void setPhaseDegrees(float degrees) {
   while (degrees < 0) degrees += 360.0f;
   while (degrees >= 360.0f) degrees -= 360.0f;
 
+  // Calculate phase in ticks with high precision using 64-bit arithmetic
+  // This avoids quantization errors from float-to-int conversion
   float ticksPerCycle = 2.0f * (float)HALF_PERIOD_TICKS;
-  phaseTicks = (int32_t)((degrees / 360.0f) * ticksPerCycle);
+  double phaseTicksDouble = (double)(degrees / 360.0f) * (double)ticksPerCycle;
+  
+  // Convert to 64-bit integer for maximum precision
+  // Use rounding instead of truncation for better accuracy
+  phaseTicks64 = (int64_t)(phaseTicksDouble + (phaseTicksDouble >= 0 ? 0.5 : -0.5));
 
-  Serial.printf("Phase = %.1f° → %ld ticks (%.2f µs)\n",
-                degrees, phaseTicks, phaseTicks * 0.025f);
+  Serial.printf("Phase = %.2f° → %lld ticks (%.3f µs)\n",
+                degrees, (long long)phaseTicks64, phaseTicks64 * 0.025);
 }
 
 // ===== HTTP HANDLERS =====

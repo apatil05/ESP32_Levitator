@@ -173,16 +173,17 @@
     }
 
     function clampedToPhase(clamped) {
-      // Map Y% (6–65%) → phase 0–180°
-      return Math.round(((clamped - 6) / (65 - 6)) * 180);
+      // Map Y% (6–65%) → phase 0–180° with fractional precision
+      return ((clamped - 6) / (65 - 6)) * 180;
     }
 
     function sendPhase(deg) {
-      // Prevent excessive requests
-      if (Math.abs(deg - lastSentPhase) < 2) return;
-      lastSentPhase = deg;
+      // Send with high precision (1 decimal place) and reduced threshold for sensitivity
+      const roundedDeg = Math.round(deg * 10) / 10;  // Round to 0.1° precision
+      if (Math.abs(roundedDeg - lastSentPhase) < 0.1) return;  // Reduced threshold to 0.1°
+      lastSentPhase = roundedDeg;
 
-      fetch(`/set_phase?deg=${deg}`)
+      fetch(`/set_phase?deg=${roundedDeg}`)
         .then(r => r.json())
         .then(d => console.log("Phase set to", d.phase))
         .catch(e => console.error("Error sending phase:", e));
