@@ -69,38 +69,35 @@ void setup() {
   delay(500);
   Serial.println("\n=== ONDA 40 Hz PWM Square Wave Generator (ESP32-C3) ===");
 
-  // --- LEDC PWM Setup for Channel 1 ---
-  ledc_timer_config_t timer_config = {
-    .speed_mode = LEDC_MODE,
-    .timer_num = LEDC_TIMER,
-    .duty_resolution = LEDC_DUTY_RES,
-    .freq_hz = (uint32_t)BASE_FREQUENCY_HZ,
-    .clk_cfg = LEDC_AUTO_CLK
-  };
+  // --- LEDC PWM Setup ---
+  ledc_timer_config_t timer_config;
+  timer_config.speed_mode = LEDC_MODE;
+  timer_config.timer_num = LEDC_TIMER;
+  timer_config.duty_resolution = LEDC_DUTY_RES;
+  timer_config.freq_hz = (uint32_t)BASE_FREQUENCY_HZ;
+  timer_config.clk_cfg = LEDC_AUTO_CLK;
   ledc_timer_config(&timer_config);
 
   // Configure Channel 1 (GPIO 2)
-  ledc_channel_config_t channel1_config = {
-    .gpio_num = GPIO_CH1,
-    .speed_mode = LEDC_MODE,
-    .channel = LEDC_CHANNEL_CH1,
-    .timer_sel = LEDC_TIMER,
-    .duty = LEDC_DUTY_50_PERCENT,
-    .hpoint = 0
-  };
+  ledc_channel_config_t channel1_config;
+  channel1_config.gpio_num = GPIO_CH1;
+  channel1_config.speed_mode = LEDC_MODE;
+  channel1_config.channel = LEDC_CHANNEL_CH1;
+  channel1_config.timer_sel = LEDC_TIMER;
+  channel1_config.duty = LEDC_DUTY_50_PERCENT;
+  channel1_config.hpoint = 0;
   ledc_channel_config(&channel1_config);
   Serial.printf("Channel 1 (GPIO %d): PWM configured at %.1f Hz, 50%% duty\n", 
                 GPIO_CH1, BASE_FREQUENCY_HZ);
 
   // Configure Channel 2 (GPIO 3) - same timer, same frequency
-  ledc_channel_config_t channel2_config = {
-    .gpio_num = GPIO_CH2,
-    .speed_mode = LEDC_MODE,
-    .channel = LEDC_CHANNEL_CH2,
-    .timer_sel = LEDC_TIMER,
-    .duty = LEDC_DUTY_50_PERCENT,
-    .hpoint = 0
-  };
+  ledc_channel_config_t channel2_config;
+  channel2_config.gpio_num = GPIO_CH2;
+  channel2_config.speed_mode = LEDC_MODE;
+  channel2_config.channel = LEDC_CHANNEL_CH2;
+  channel2_config.timer_sel = LEDC_TIMER;
+  channel2_config.duty = LEDC_DUTY_50_PERCENT;
+  channel2_config.hpoint = 0;
   ledc_channel_config(&channel2_config);
   Serial.printf("Channel 2 (GPIO %d): PWM configured at %.1f Hz, 50%% duty\n", 
                 GPIO_CH2, BASE_FREQUENCY_HZ);
