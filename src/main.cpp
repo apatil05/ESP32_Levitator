@@ -27,7 +27,8 @@ WebServer server(80);
 
 volatile bool level_ch1 = false;
 volatile bool level_ch2 = false;
-volatile int32_t phaseTicks = 0;   // phase offset in ticks
+volatile int32_t phaseTicks = 0;
+// phase offset in ticks
 uint32_t tickCounter = 0;
 
 // ===== ISR =====
@@ -55,6 +56,8 @@ void setPhaseDegrees(float degrees) {
   Serial.printf("Phase = %.1f° → %ld ticks (%.2f µs)\n",
                 degrees, phaseTicks, phaseTicks * 0.025f);
 }
+
+
 
 // ===== HTTP HANDLERS =====
 void handleRoot() {
