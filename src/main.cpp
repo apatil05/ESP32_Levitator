@@ -14,7 +14,7 @@ const int GPIO_CH2 = 26;  // Channel 2 output pin (was DAC_CHANNEL_2)
 
 // LEDC configuration for PWM square waves
 #define LEDC_TIMER              LEDC_TIMER_0
-#define LEDC_MODE               LEDC_LOW_SPEED_MODE
+#define LEDC_MODE               LEDC_HIGH_SPEED_MODE  // Use high-speed mode for accurate 40 kHz
 #define LEDC_CHANNEL_CH1        LEDC_CHANNEL_0
 #define LEDC_CHANNEL_CH2        LEDC_CHANNEL_1
 #define LEDC_DUTY_RES           LEDC_TIMER_13_BIT  // 13-bit resolution (8192 steps)
@@ -91,13 +91,18 @@ void setup() {
   timer_config.speed_mode = LEDC_MODE;
   timer_config.timer_num = LEDC_TIMER;
   timer_config.duty_resolution = LEDC_DUTY_RES;
-  timer_config.freq_hz = (uint32_t)BASE_FREQUENCY_HZ;
+  timer_config.freq_hz = (uint32_t)BASE_FREQUENCY_HZ;  // 40 kHz
   timer_config.clk_cfg = LEDC_AUTO_CLK;
   esp_err_t timer_result = ledc_timer_config(&timer_config);
   if (timer_result != ESP_OK) {
     Serial.printf("ERROR: Timer config failed: %d\n", timer_result);
     return;
   }
+  
+  // Verify actual frequency (LEDC may adjust it slightly)
+  uint32_t actual_freq = ledc_get_freq(LEDC_MODE, LEDC_TIMER);
+  Serial.printf("Requested frequency: %.1f Hz, Actual frequency: %lu Hz\n", 
+                BASE_FREQUENCY_HZ, actual_freq);
 
   // Configure Channel 1 (GPIO 25) - Reference channel (no phase offset)
   ledc_channel_config_t channel1_config;
