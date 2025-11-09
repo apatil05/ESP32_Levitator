@@ -11,11 +11,15 @@ static const float BASE_FREQUENCY_HZ = 40000.0f;     // 40 kHz
 static const dac_channel_t DAC_CH1 = DAC_CHANNEL_1;  // GPIO 25
 static const dac_channel_t DAC_CH2 = DAC_CHANNEL_2;  // GPIO 26
 
-// Timer: 80 MHz / 2 = 40 MHz → 25 ns tick
-#define TIMER_DIVIDER      2
+// Timer: 80 MHz / 5 = 16 MHz → 62.5 ns per tick
+#define TIMER_DIVIDER      5
 #define APB_CLK_FREQ       80000000
 #define TIMER_TICKS_PER_S  (APB_CLK_FREQ / TIMER_DIVIDER)
-const uint32_t HALF_PERIOD_TICKS = 500;  // 12.5 µs × 40 MHz = 500 ticks
+
+// Derived timing
+const uint32_t PERIOD_TICKS      = TIMER_TICKS_PER_S / (uint32_t)BASE_FREQUENCY_HZ;  // 400 ticks
+const uint32_t HALF_PERIOD_TICKS = PERIOD_TICKS / 2;                                 // 200
+const uint32_t STEP_TICKS        = PERIOD_TICKS / 32;                                // 32 steps ≈ 11.25°
 
 // Wi-Fi AP credentials
 const char *AP_SSID = "ONDA";
@@ -24,36 +28,39 @@ const char *AP_PASSWORD = "levitate123";
 // ===== GLOBALS =====
 hw_timer_t *g_timer = nullptr;
 WebServer server(80);
-
-volatile bool level_ch1 = false;
-volatile bool level_ch2 = false;
-volatile int32_t phaseTicks = 0;   // phase offset in ticks
-uint32_t tickCounter = 0;
+volatile uint32_t phaseAcc = 0;
+volatile int32_t phaseOffsetTicks = 0;
 
 // ===== ISR =====
 void IRAM_ATTR onTimerISR() {
-  tickCounter += HALF_PERIOD_TICKS;
+  phaseAcc += STEP_TICKS;
+  if (phaseAcc >= PERIOD_TICKS) phaseAcc -= PERIOD_TICKS;
 
-  // Channel 1 toggles every interrupt
-  level_ch1 = !level_ch1;
-  dac_output_voltage(DAC_CH1, level_ch1 ? 255 : 0);
+  // CH1 — reference
+  bool ch1_high = (phaseAcc < HALF_PERIOD_TICKS);
+  dac_output_voltage(DAC_CH1, ch1_high ? 255 : 0);
 
-  // Channel 2 toggles based on phase offset
-  int32_t offsetCounter = (tickCounter + phaseTicks) % (2 * HALF_PERIOD_TICKS);
-  bool ch2_state = offsetCounter < HALF_PERIOD_TICKS;
-  dac_output_voltage(DAC_CH2, ch2_state ? 255 : 0);
+  // CH2 — phase shifted
+  uint32_t shifted = phaseAcc + phaseOffsetTicks;
+  if (shifted >= PERIOD_TICKS) shifted -= PERIOD_TICKS;
+  bool ch2_high = (shifted < HALF_PERIOD_TICKS);
+  dac_output_voltage(DAC_CH2, ch2_high ? 255 : 0);
 }
 
 // ===== PHASE CONTROL =====
 void setPhaseDegrees(float degrees) {
-  while (degrees < 0) degrees += 360.0f;
+  while (degrees < 0.0f)    degrees += 360.0f;
   while (degrees >= 360.0f) degrees -= 360.0f;
 
-  float ticksPerCycle = 2.0f * (float)HALF_PERIOD_TICKS;
-  phaseTicks = (int32_t)((degrees / 360.0f) * ticksPerCycle);
+  float ticksPerCycle = (float)PERIOD_TICKS;  // 400
+  int32_t newOffset = (int32_t)((degrees / 360.0f) * ticksPerCycle + 0.5f);
 
-  Serial.printf("Phase = %.1f° → %ld ticks (%.2f µs)\n",
-                degrees, phaseTicks, phaseTicks * 0.025f);
+  noInterrupts();
+  phaseOffsetTicks = newOffset;
+  interrupts();
+
+  float us = newOffset * (1e6f / (float)TIMER_TICKS_PER_S);
+  Serial.printf("Phase = %.1f° → %ld ticks (%.2f µs)\n", degrees, newOffset, us);
 }
 
 // ===== HTTP HANDLERS =====
@@ -84,7 +91,7 @@ void handleSetPhase() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\n=== ONDA 40 kHz Phase Generator ===");
+  Serial.println("\n=== ONDA 40 kHz Phase Generator (Smooth) ===");
 
   // --- DAC ---
   dac_output_enable(DAC_CH1);
@@ -113,12 +120,13 @@ void setup() {
   // --- Timer ---
   g_timer = timerBegin(0, TIMER_DIVIDER, true);
   timerAttachInterrupt(g_timer, &onTimerISR, true);
-  timerAlarmWrite(g_timer, HALF_PERIOD_TICKS, true);
+  timerAlarmWrite(g_timer, STEP_TICKS, true);   // trigger every fine step
   timerAlarmEnable(g_timer);
-  Serial.println("Timer running at 40 kHz square-wave rate.");
+  Serial.println("Timer running with fine phase control.");
 }
 
 // ===== LOOP =====
 void loop() {
   server.handleClient();
 }
+
