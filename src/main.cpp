@@ -23,8 +23,7 @@ const int GPIO_CH2 = 3;  // Channel 2 output pin
 #endif
 #define TIMER_TICKS_PER_S  (APB_CLK_FREQ / TIMER_DIVIDER)
 const uint32_t PERIOD_TICKS = TIMER_TICKS_PER_S / (uint32_t)BASE_FREQUENCY_HZ;  // 1000 ticks
-const uint32_t HALF_PERIOD_TICKS = PERIOD_TICKS / 2;  // 500 ticks
-const uint32_t TIMER_STEP = 50;  // 50 ticks = 1.25 µs at 40 MHz (for smooth phase control)
+const uint32_t HALF_PERIOD_TICKS = PERIOD_TICKS / 2;  // 500 ticks = 12.5 µs at 40 MHz
 
 // Wi-Fi AP credentials
 const char *AP_SSID = "ONDA";
@@ -34,50 +33,33 @@ const char *AP_PASSWORD = "levitate123";
 hw_timer_t *g_timer = nullptr;
 WebServer server(80);
 
-volatile uint32_t position = 0;    // Position in period (0 to PERIOD_TICKS-1)
 volatile int32_t phaseTicks = 0;   // Phase offset in ticks
 volatile bool level_ch1 = false;
 volatile bool level_ch2 = false;
 
 // ===== ISR =====
 void IRAM_ATTR onTimerISR() {
-  // Increment position in the period (wraps automatically)
-  position = (position + TIMER_STEP) % PERIOD_TICKS;
+  // Track position: 0 = first half (high), HALF_PERIOD_TICKS = second half (low)
+  static volatile uint32_t position = 0;
   
-  // Channel 1: High for first half (0-499), low for second half (500-999)
-  bool ch1_state = (position < HALF_PERIOD_TICKS);
+  // Channel 1: Toggle directly (square wave at 40 kHz)
+  level_ch1 = !level_ch1;
+  gpio_set_level((gpio_num_t)GPIO_CH1, level_ch1 ? 1 : 0);
   
-  // Channel 2: Same waveform but phase-shifted
-  uint32_t ch2_position = (position + phaseTicks) % PERIOD_TICKS;
-  bool ch2_state = (ch2_position < HALF_PERIOD_TICKS);
+  // Channel 2: Apply phase offset to position
+  int32_t ch2_pos = (int32_t)position + phaseTicks;
+  // Normalize to 0-PERIOD_TICKS range (handle negative values)
+  if (ch2_pos < 0) ch2_pos += PERIOD_TICKS;
+  if (ch2_pos >= PERIOD_TICKS) ch2_pos -= PERIOD_TICKS;
   
-  // Update GPIO register only if states changed (optimize for performance)
-  bool need_update = false;
-  uint32_t gpio_reg = REG_READ(GPIO_OUT_REG);
-  
-  if (ch1_state != level_ch1) {
-    level_ch1 = ch1_state;
-    need_update = true;
-    if (level_ch1) {
-      gpio_reg |= (1UL << GPIO_CH1);
-    } else {
-      gpio_reg &= ~(1UL << GPIO_CH1);
-    }
+  bool ch2_should_be_high = (ch2_pos < HALF_PERIOD_TICKS);
+  if (ch2_should_be_high != level_ch2) {
+    level_ch2 = ch2_should_be_high;
+    gpio_set_level((gpio_num_t)GPIO_CH2, level_ch2 ? 1 : 0);
   }
   
-  if (ch2_state != level_ch2) {
-    level_ch2 = ch2_state;
-    need_update = true;
-    if (level_ch2) {
-      gpio_reg |= (1UL << GPIO_CH2);
-    } else {
-      gpio_reg &= ~(1UL << GPIO_CH2);
-    }
-  }
-  
-  if (need_update) {
-    REG_WRITE(GPIO_OUT_REG, gpio_reg);
-  }
+  // Advance position: toggle between 0 and HALF_PERIOD_TICKS
+  position = (position == 0) ? HALF_PERIOD_TICKS : 0;
 }
 
 // ===== PHASE CONTROL =====
@@ -134,10 +116,12 @@ void setup() {
   Serial.println("\n=== ONDA 40 kHz Phase Generator (ESP32-C3 PWM) ===");
 
   // --- GPIO Setup ---
-  pinMode(GPIO_CH1, OUTPUT);
-  pinMode(GPIO_CH2, OUTPUT);
-  digitalWrite(GPIO_CH1, LOW);
-  digitalWrite(GPIO_CH2, LOW);
+  gpio_reset_pin((gpio_num_t)GPIO_CH1);
+  gpio_reset_pin((gpio_num_t)GPIO_CH2);
+  gpio_set_direction((gpio_num_t)GPIO_CH1, GPIO_MODE_OUTPUT);
+  gpio_set_direction((gpio_num_t)GPIO_CH2, GPIO_MODE_OUTPUT);
+  gpio_set_level((gpio_num_t)GPIO_CH1, 0);
+  gpio_set_level((gpio_num_t)GPIO_CH2, 0);
   Serial.printf("GPIO %d (CH1) and GPIO %d (CH2) configured for square wave output\n", 
                  GPIO_CH1, GPIO_CH2);
   
@@ -163,16 +147,20 @@ void setup() {
   Serial.println("HTTP server started on port 80.");
 
   // --- Timer for square wave generation ---
-  // Fire timer every 50 ticks for smooth phase control
-  // Using 50 ticks = 1.25 µs intervals = 800 kHz interrupt rate
-  // This gives 20 steps per period = 18° phase resolution (good enough for smooth control)
+  // Fire timer every HALF_PERIOD_TICKS (500 ticks = 12.5 µs) to toggle square wave
+  // This gives exactly 40 kHz: 40 MHz / 1000 ticks = 40,000 Hz
   g_timer = timerBegin(0, TIMER_DIVIDER, true);
+  if (!g_timer) {
+    Serial.println("ERROR: Failed to initialize timer!");
+    return;
+  }
   timerAttachInterrupt(g_timer, &onTimerISR, true);
-  timerAlarmWrite(g_timer, TIMER_STEP, true);
+  timerAlarmWrite(g_timer, HALF_PERIOD_TICKS, true);  // Toggle every half period
   timerAlarmEnable(g_timer);
-  Serial.printf("Timer: %u MHz, Period: %u ticks, Step: %u ticks\n",
-                TIMER_TICKS_PER_S / 1000000, PERIOD_TICKS, TIMER_STEP);
-  Serial.printf("Phase resolution: %.1f° per step\n", 360.0f / (PERIOD_TICKS / TIMER_STEP));
+  Serial.printf("Timer configured: %u MHz clock, %u ticks per half-period\n",
+                TIMER_TICKS_PER_S / 1000000, HALF_PERIOD_TICKS);
+  Serial.printf("Expected frequency: %.1f Hz (target: %.1f Hz)\n",
+                (float)TIMER_TICKS_PER_S / (2.0f * HALF_PERIOD_TICKS), BASE_FREQUENCY_HZ);
   Serial.println("40 kHz square waves active on both channels.");
 }
 
