@@ -6,7 +6,7 @@
 #include "SPIFFS.h"
 
 // ===== CONFIG =====
-static const float BASE_FREQUENCY_HZ = 40.0f;     // 40 Hz
+static const float BASE_FREQUENCY_HZ = 40000.0f;     // 40 kHz
 
 // ESP32 GPIO pins (using original DAC pins, but with PWM)
 const int GPIO_CH1 = 25;  // Channel 1 output pin (was DAC_CHANNEL_1)
@@ -83,7 +83,7 @@ void handleSetPhase() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\n=== ONDA 40 Hz PWM Square Wave Generator (ESP32) ===");
+  Serial.println("\n=== ONDA 40 kHz PWM Square Wave Generator (ESP32) ===");
 
   // --- LEDC PWM Setup ---
   // Configure timer (shared by both channels for synchronization)
