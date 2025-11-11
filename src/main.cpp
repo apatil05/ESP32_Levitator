@@ -1,44 +1,144 @@
 #include <Arduino.h>
-#include "soc/sens_reg.h"
-#include "driver/dac.h"
-#include "soc/rtc.h"
+#include <WiFi.h>
+#include <WebServer.h>
+#include "driver/ledc.h"
+#include "FS.h"
+#include "SPIFFS.h"
 
+// ===== CONFIG =====
+#define FREQUENCY_HZ            40000UL    // 40 kHz exactly
+#define GPIO_CH1                25          // Channel 1 (GPIO 25)
+#define GPIO_CH2                26          // Channel 2 (GPIO 26)
 
-// put function declarations here:
-//int myFunction(int, int);
+// LEDC PWM Configuration
+#define LEDC_TIMER              LEDC_TIMER_0
+#define LEDC_MODE               LEDC_HIGH_SPEED_MODE
+#define LEDC_CHANNEL_CH1        LEDC_CHANNEL_0
+#define LEDC_CHANNEL_CH2        LEDC_CHANNEL_1
+#define LEDC_DUTY_RES           LEDC_TIMER_10_BIT  // 10-bit for 40 kHz (1024 steps)
+#define LEDC_DUTY_50_PERCENT    512         // 50% duty (1024/2)
+#define LEDC_MAX_STEPS          1024        // For phase calculation
 
+// Wi-Fi AP credentials
+const char *AP_SSID = "ONDA";
+const char *AP_PASSWORD = "levitate123";
+
+// ===== GLOBALS =====
+WebServer server(80);
+
+// ===== PHASE CONTROL =====
+void setPhaseDegrees(float degrees) {
+  // Normalize to 0-360
+  while (degrees < 0) degrees += 360.0f;
+  while (degrees >= 360.0f) degrees -= 360.0f;
+  
+  // Convert phase to hpoint: 360° = 1024 steps (full period)
+  uint32_t hpoint = (uint32_t)((degrees / 360.0f) * (float)LEDC_MAX_STEPS + 0.5f);
+  
+  // Reconfigure Channel 2 with new phase
+  ledc_channel_config_t cfg;
+  cfg.gpio_num = GPIO_CH2;
+  cfg.speed_mode = LEDC_MODE;
+  cfg.channel = LEDC_CHANNEL_CH2;
+  cfg.timer_sel = LEDC_TIMER;
+  cfg.duty = LEDC_DUTY_50_PERCENT;
+  cfg.hpoint = hpoint;
+  cfg.intr_type = LEDC_INTR_DISABLE;
+  ledc_channel_config(&cfg);
+  
+  Serial.printf("Phase: %.1f°\n", degrees);
+}
+
+// ===== HTTP HANDLERS =====
+void handleRoot() {
+  File file = SPIFFS.open("/index.html", "r");
+  if (!file) {
+    server.send(500, "text/plain", "index.html not found on SPIFFS");
+    return;
+  }
+  server.streamFile(file, "text/html");
+  file.close();
+}
+
+void handleSetPhase() {
+  if (!server.hasArg("deg")) {
+    server.send(400, "application/json", "{\"error\":\"missing deg param\"}");
+    return;
+  }
+
+  float deg = server.arg("deg").toFloat();
+  setPhaseDegrees(deg);
+
+  String json = "{\"success\":true,\"phase\":" + String(deg, 1) + "}";
+  server.send(200, "application/json", json);
+}
+
+// ===== SETUP =====
 void setup() {
-  Serial.begin(921600);
-  delay(1000);
-  Serial.println("Starting cosine waveform test...");
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("\n=== 40 kHz PWM Square Wave Generator ===");
 
-  // 1️⃣ Enable cosine waveform generator
-  SET_PERI_REG_MASK(SENS_SAR_DAC_CTRL1_REG, SENS_SW_TONE_EN);
+  // Configure shared timer for both channels (ensures synchronization)
+  ledc_timer_config_t timer_cfg;
+  timer_cfg.speed_mode = LEDC_MODE;
+  timer_cfg.timer_num = LEDC_TIMER;
+  timer_cfg.duty_resolution = LEDC_DUTY_RES;
+  timer_cfg.freq_hz = FREQUENCY_HZ;
+  timer_cfg.clk_cfg = LEDC_AUTO_CLK;
+  ledc_timer_config(&timer_cfg);
+  
+  // Verify frequency
+  uint32_t actual_freq = ledc_get_freq(LEDC_MODE, LEDC_TIMER);
+  Serial.printf("Frequency: %lu Hz (requested %lu Hz)\n", actual_freq, FREQUENCY_HZ);
 
-  // 2️⃣ Connect generator to DAC channel 1 (GPIO25)
-  SET_PERI_REG_MASK(SENS_SAR_DAC_CTRL2_REG, SENS_DAC_CW_EN1_M);
+  // Channel 1: Reference (GPIO 25)
+  ledc_channel_config_t ch1_cfg;
+  ch1_cfg.gpio_num = GPIO_CH1;
+  ch1_cfg.speed_mode = LEDC_MODE;
+  ch1_cfg.channel = LEDC_CHANNEL_CH1;
+  ch1_cfg.timer_sel = LEDC_TIMER;
+  ch1_cfg.duty = LEDC_DUTY_50_PERCENT;
+  ch1_cfg.hpoint = 0;
+  ch1_cfg.intr_type = LEDC_INTR_DISABLE;
+  ledc_channel_config(&ch1_cfg);
+  Serial.printf("Channel 1 (GPIO %d): Active\n", GPIO_CH1);
 
-  // 3️⃣ Set frequency step (larger = higher freq)
-  uint16_t freq_step = 1000;  // Try 1000 for ~130kHz, lower for slower
-  SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL1_REG, SENS_SW_FSTEP, freq_step, SENS_SW_FSTEP_S);
+  // Channel 2: Phase-shiftable (GPIO 26)
+  ledc_channel_config_t ch2_cfg;
+  ch2_cfg.gpio_num = GPIO_CH2;
+  ch2_cfg.speed_mode = LEDC_MODE;
+  ch2_cfg.channel = LEDC_CHANNEL_CH2;
+  ch2_cfg.timer_sel = LEDC_TIMER;
+  ch2_cfg.duty = LEDC_DUTY_50_PERCENT;
+  ch2_cfg.hpoint = 0;
+  ch2_cfg.intr_type = LEDC_INTR_DISABLE;
+  ledc_channel_config(&ch2_cfg);
+  Serial.printf("Channel 2 (GPIO %d): Active\n", GPIO_CH2);
 
-  // 4️⃣ Fix waveform inversion (makes a proper sine)
-  SET_PERI_REG_BITS(SENS_SAR_DAC_CTRL2_REG, SENS_DAC_INV1, 2, SENS_DAC_INV1_S);
+  Serial.println("40 kHz square waves active!");
 
-  // 5️⃣ Enable DAC1 output
-  dac_output_enable(DAC_CHANNEL_1);
+  // --- SPIFFS (for web interface) ---
+  if (!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS mount failed (web interface disabled)");
+  } else {
+    Serial.println("SPIFFS mounted successfully.");
+    
+    // --- Wi-Fi AP ---
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(AP_SSID, AP_PASSWORD);
+    Serial.printf("Wi-Fi started. SSID: %s, IP: %s\n",
+                  AP_SSID, WiFi.softAPIP().toString().c_str());
 
-  Serial.println("Cosine wave enabled on GPIO25 (DAC1).");
+    // --- HTTP server ---
+    server.on("/", handleRoot);
+    server.on("/set_phase", handleSetPhase);
+    server.begin();
+    Serial.println("HTTP server started on port 80.");
+  }
 }
 
+// ===== LOOP =====
 void loop() {
-  // put your main code here, to run repeatedly:
-  //delay(10000);
-  //Serial.println("Nutz");
-  //delay(1000);
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+  server.handleClient();
 }

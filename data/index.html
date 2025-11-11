@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ONDA</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* ---------- BACKGROUND ---------- */
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: 'Orbitron', sans-serif;
+      color: #e0faff;
+      background: linear-gradient(180deg, #000814 0%, #001f3f 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .background {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      z-index: 0;
+    }
+
+    .wave {
+      position: absolute;
+      bottom: 0;
+      width: 200%;
+      height: 250px;
+      border-radius: 1000px 1000px 0 0;
+      filter: blur(25px);
+      opacity: 0.6;
+      animation: waveMotion 12s infinite linear;
+    }
+
+    .wave:nth-child(1) {
+      background: rgba(0, 255, 204, 0.35);
+      animation-duration: 12s;
+    }
+
+    .wave:nth-child(2) {
+      background: rgba(0, 150, 255, 0.3);
+      animation-duration: 15s;
+    }
+
+    .wave:nth-child(3) {
+      background: rgba(157, 0, 255, 0.25);
+      animation-duration: 20s;
+    }
+
+    @keyframes waveMotion {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    .wave.boosted {
+      filter: blur(15px);
+      opacity: 0.9;
+      animation-duration: 6s !important;
+      transform: scale(1.05);
+    }
+
+    /* ---------- TITLE ---------- */
+    h1 {
+      position: relative;
+      z-index: 2;
+      font-size: 4rem !important;
+      font-weight: 900;
+      color: #00ffff;
+      letter-spacing: 0.7em;
+      text-shadow:
+        0 0 20px #00ffff,
+        0 0 40px #0077ff,
+        0 0 80px #9d00ff,
+        0 0 100px #00ffff;
+      animation: titlePulse 3s infinite ease-in-out;
+      margin-bottom: 3rem;
+      margin-top: 2rem;
+    }
+
+    @keyframes titlePulse {
+      0%, 100% {
+        text-shadow:
+          0 0 20px #00ffff,
+          0 0 40px #0077ff,
+          0 0 80px #9d00ff,
+          0 0 100px #00ffff;
+      }
+      50% {
+        text-shadow:
+          0 0 40px #00e1ff,
+          0 0 60px #00ffff,
+          0 0 100px #b700ff,
+          0 0 120px #00ffff;
+      }
+    }
+
+    /* ---------- BALL ---------- */
+    #ball {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #ffffff, #83866b);
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 35%;
+      transition: top 0.2s ease-out, box-shadow 0.3s ease-out, transform 0.2s;
+      box-shadow: none;
+      z-index: 2;
+    }
+
+    #ball.active-glow {
+      box-shadow:
+        0 0 30px rgba(0, 255, 255, 0.9),
+        0 0 60px rgba(0, 119, 255, 0.8),
+        0 0 90px rgba(157, 0, 255, 0.7);
+      transform: translateX(-50%) scale(1.1);
+    }
+
+    /* ---------- CONTAINER (renamed to avoid Tailwind conflict) ---------- */
+    .onda-container {
+      position: relative;
+      width: 26rem;   /* bigger box */
+      height: 30rem;  /* taller box for more travel */
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-radius: 1.2rem;
+      backdrop-filter: blur(8px);
+      background: rgba(255, 255, 255, 0.03);
+      overflow: hidden;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.1);
+      z-index: 2;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+
+<body class="flex flex-col items-center justify-center min-h-screen text-center">
+
+  <!-- Animated background -->
+  <div class="background">
+    <div class="wave"></div>
+    <div class="wave"></div>
+    <div class="wave"></div>
+  </div>
+
+  <!-- Title -->
+  <h1>O&nbsp;&nbsp;N&nbsp;&nbsp;D&nbsp;&nbsp;A</h1>
+
+  <!-- Container -->
+  <div class="onda-container">
+    <div id="ball"></div>
+  </div>
+
+  <!-- JS Logic -->
+  <script>
+    const ball = document.getElementById('ball');
+    const container = ball.parentElement;
+    const waves = document.querySelectorAll('.wave');
+
+    let isDragging = false;
+    let startY = 0;
+    let startTop = 0;
+    let lastSentPhase = -1;
+
+    function moveBallTo(yPercent) {
+      const clamped = Math.min(65, Math.max(6, yPercent));
+      ball.style.top = clamped + '%';
+      activateGlow();
+      const phase = clampedToPhase(clamped);
+      sendPhase(phase);
+    }
+
+    function clampedToPhase(clamped) {
+      // Map Y% (6–65%) → phase 0–360°
+      return Math.round(((clamped - 6) / (65 - 6)) * 360);
+    }
+
+    function sendPhase(deg) {
+      // Make it less sensitive: only send if changed by >= 4°
+      if (Math.abs(deg - lastSentPhase) < 4) return;
+      lastSentPhase = deg;
+
+      fetch(`/set_phase?deg=${deg}`)
+        .then(r => r.json())
+        .then(d => console.log("Phase set to", d.phase))
+        .catch(e => console.error("Error sending phase:", e));
+    }
+
+    function activateGlow() {
+      ball.classList.add('active-glow');
+      waves.forEach(w => w.classList.add('boosted'));
+      clearTimeout(ball.glowTimeout);
+      ball.glowTimeout = setTimeout(() => {
+        ball.classList.remove('active-glow');
+        waves.forEach(w => w.classList.remove('boosted'));
+      }, 400);
+    }
+
+    function startDrag(e) {
+      isDragging = true;
+      startY = e.touches ? e.touches[0].clientY : e.clientY;
+      startTop = parseFloat(getComputedStyle(ball).top) / container.clientHeight * 100;
+      activateGlow();
+    }
+
+    function onDrag(e) {
+      if (!isDragging) return;
+      const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+      const delta = (currentY - startY) / container.clientHeight * 100;
+      moveBallTo(startTop + delta);
+    }
+
+    function endDrag() {
+      isDragging = false;
+      ball.classList.remove('active-glow');
+      waves.forEach(w => w.classList.remove('boosted'));
+    }
+
+    document.addEventListener('keydown', (e) => {
+      let current = parseFloat(getComputedStyle(ball).top) / container.clientHeight * 100;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        // smaller steps for less sensitivity
+        const STEP = 2; // was 5
+        if (e.key === 'ArrowUp') moveBallTo(current - STEP);
+        if (e.key === 'ArrowDown') moveBallTo(current + STEP);
+      }
+    });
+
+    ball.addEventListener('mousedown', startDrag);
+    ball.addEventListener('touchstart', startDrag);
+    window.addEventListener('mousemove', onDrag);
+    window.addEventListener('touchmove', onDrag);
+    window.addEventListener('mouseup', endDrag);
+    window.addEventListener('touchend', endDrag);
+  </script>
+</body>
+</html>
+
